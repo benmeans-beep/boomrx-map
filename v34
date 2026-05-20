@@ -1,0 +1,1953 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>BoomRx Formulary Map</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/3.0.2/topojson.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Inter+Mono:wght@400;500&display=swap');
+:root{
+  --bg:#0b0f1a;--surface:#111827;--surface2:#1c2333;--surface3:#243044;
+  --border:rgba(255,255,255,0.08);--border2:rgba(255,255,255,0.14);
+  --text:#ffffff;--text2:#94a3b8;--text3:#475569;
+  --orange:#f97316;--orange-dim:rgba(249,115,22,0.15);--orange-glow:rgba(249,115,22,0.08);
+  --green:#22c55e;--green-dim:rgba(34,197,94,0.15);
+  --purple:#a78bfa;--purple-dim:rgba(167,139,250,0.15);
+  --sheet-radius:20px;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;overflow:hidden;font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--text);font-size:14px}
+
+/* HEADER */
+.hdr{height:52px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 16px;flex-shrink:0;z-index:10}
+.logo{display:flex;align-items:center;gap:8px}
+.logo-mark{width:28px;height:28px;background:var(--orange);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff}
+.logo-text{font-size:15px;font-weight:700;letter-spacing:-0.3px}.logo-text span{color:var(--orange)}
+.conf-badge{font-size:8px;font-family:'Inter Mono',monospace;color:var(--text3);border:1px solid rgba(249,115,22,0.25);padding:2px 7px;border-radius:3px;display:none}
+
+/* LAYOUT */
+.app{display:flex;flex-direction:column;height:100vh}
+.body{flex:1;display:flex;flex-direction:column;overflow:hidden;position:relative}
+
+/* PILL BAR */
+.pill-bar{padding:9px 12px 7px;display:flex;gap:6px;overflow-x:auto;flex-shrink:0;scrollbar-width:none;background:var(--surface);border-bottom:1px solid var(--border)}
+.pill-bar::-webkit-scrollbar{display:none}
+.pill{display:flex;align-items:center;gap:5px;padding:5px 11px;border-radius:20px;border:1px solid var(--border2);background:transparent;color:var(--text2);font-family:'Inter',sans-serif;font-size:12px;font-weight:500;cursor:pointer;white-space:nowrap;flex-shrink:0;transition:all .15s}
+.pill.active{color:#fff;border-color:var(--orange);background:var(--orange-dim)}
+.pill-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+
+/* FORMULARY STATUS BAR */
+.formulary-status{padding:5px 14px;font-size:11px;font-family:'Inter Mono',monospace;display:flex;align-items:center;gap:7px;flex-shrink:0;border-bottom:1px solid var(--border);transition:all .3s}
+.formulary-status.loading{background:rgba(167,139,250,0.08);color:#a78bfa}
+.formulary-status.loaded{background:rgba(34,197,94,0.08);color:#34d399}
+.formulary-status.error{background:rgba(239,68,68,0.08);color:#f87171}
+.fs-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.fs-loading{background:#a78bfa;animation:pulse 1.2s infinite}
+.fs-ok{background:#34d399}
+.fs-err{background:#ef4444}
+.fs-refresh{cursor:pointer;text-decoration:underline;opacity:0.8}
+.fs-refresh:hover{opacity:1}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
+
+/* SHEET LOADING OVERLAY */
+.sheet-loading{display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;gap:10px;color:var(--text3);font-size:12px;font-family:'Inter Mono',monospace}
+.sheet-loading-spinner{width:24px;height:24px;border:2px solid var(--border2);border-top-color:var(--orange);border-radius:50%;animation:spin 0.8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* SHEET NOT CONFIGURED */
+.config-notice{margin:16px;padding:14px;background:rgba(249,115,22,0.08);border:1px solid rgba(249,115,22,0.2);border-radius:10px;font-size:12px;color:#fdba74;line-height:1.7}
+.config-notice code{background:rgba(255,255,255,0.08);padding:1px 5px;border-radius:3px;font-family:'Inter Mono',monospace;font-size:11px}
+
+/* PRODUCT SEARCH IN HEADER */
+.hdr{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;flex-wrap:wrap}
+.prod-search-wrap{flex:1;min-width:180px;position:relative;max-width:420px}
+.prod-search-input{width:100%;background:var(--surface2);border:1px solid var(--border2);border-radius:9px;padding:6px 28px 6px 28px;color:var(--text);font-family:'Inter',sans-serif;font-size:12px;outline:none;-webkit-appearance:none;transition:border-color .15s}
+.prod-search-input:focus{border-color:var(--orange)}
+.prod-search-input::placeholder{color:var(--text3)}
+.prod-search-icon{position:absolute;left:8px;top:50%;transform:translateY(-50%);font-size:14px;color:var(--text3);pointer-events:none}
+.prod-search-clear{position:absolute;right:7px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text3);font-size:12px;cursor:pointer;padding:2px 4px}
+
+/* PRODUCT RESULTS PANEL */
+.prod-panel{position:fixed;inset:0;z-index:120;display:flex;flex-direction:column;background:var(--bg)}
+.prod-panel-head{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--border);flex-shrink:0}
+.prod-panel-title{font-size:15px;font-weight:700;color:var(--text)}
+.prod-panel-body{flex:1;overflow-y:auto;padding:12px 14px;display:flex;flex-direction:column;gap:8px}
+.prod-state-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden}
+.prod-state-hdr{padding:10px 13px;background:var(--surface2);font-size:12px;font-weight:700;color:var(--text);display:flex;align-items:center;gap:8px;cursor:pointer}
+.prod-state-hdr:hover{background:var(--surface3)}
+.prod-pharm-row{padding:8px 13px;border-top:1px solid var(--border);display:flex;align-items:center;gap:8px;font-size:12px}
+.prod-pharm-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.prod-pharm-name{color:var(--text2);flex:1}
+.prod-pharm-price{color:var(--text);font-weight:600;font-family:'Inter Mono',monospace}
+.prod-pharm-form{color:var(--text3);font-size:11px}
+.prod-no-results{text-align:center;color:var(--text3);font-size:13px;padding:40px 20px}
+
+/* PRESCRIBER SUMMARY BUTTON */
+.btn-summary{background:rgba(56,189,248,0.1);border-color:rgba(56,189,248,0.3);color:#38bdf8}
+.btn-summary:hover{background:rgba(56,189,248,0.2)}
+
+/* SUMMARY MODAL */
+.summary-modal{position:fixed;inset:0;z-index:200;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.7);padding:20px}
+.summary-box{background:var(--surface);border:1px solid var(--border);border-radius:16px;width:100%;max-width:520px;max-height:80vh;display:flex;flex-direction:column}
+.summary-head{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--border);flex-shrink:0}
+.summary-head-title{font-size:14px;font-weight:700;color:var(--text)}
+.summary-body{padding:16px;overflow-y:auto;flex:1}
+.summary-text{background:var(--surface2);border:1px solid var(--border2);border-radius:10px;padding:14px;font-size:12px;font-family:'Inter Mono',monospace;color:var(--text2);white-space:pre-wrap;line-height:1.6;user-select:all}
+.summary-copy-btn{margin-top:12px;width:100%;padding:10px;background:var(--orange);border:none;border-radius:10px;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif}
+.summary-copy-btn:active{opacity:0.8}
+.map-toolbar{display:flex;align-items:center;gap:8px;padding:7px 10px 0;flex-shrink:0}
+.search-wrap{flex:1;position:relative}
+.search-input{width:100%;background:var(--surface2);border:1px solid var(--border2);border-radius:9px;padding:7px 30px 7px 30px;color:var(--text);font-family:'Inter',sans-serif;font-size:13px;outline:none;-webkit-appearance:none;transition:border-color .15s}
+.search-input:focus{border-color:var(--orange)}
+.search-input::placeholder{color:var(--text3)}
+.search-icon{position:absolute;left:9px;top:50%;transform:translateY(-50%);font-size:15px;color:var(--text3);pointer-events:none;line-height:1}
+.search-clear{position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text3);font-size:13px;cursor:pointer;padding:2px 4px;line-height:1}
+.search-dropdown{position:absolute;top:calc(100% + 4px);left:0;right:0;background:var(--surface2);border:1px solid var(--border2);border-radius:10px;z-index:50;overflow:hidden;box-shadow:0 8px 24px rgba(0,0,0,0.4);display:none}
+.search-dropdown.open{display:block}
+.search-result{padding:9px 13px;font-size:13px;color:var(--text2);cursor:pointer;display:flex;align-items:center;gap:8px;transition:background .1s}
+.search-result:hover,.search-result.focused{background:var(--surface3);color:var(--text)}
+.search-result-abbr{font-size:10px;font-family:'Inter Mono',monospace;color:var(--text3);background:var(--surface);border:1px solid var(--border2);padding:1px 5px;border-radius:3px;flex-shrink:0}
+.search-result-pharms{font-size:10px;color:var(--text3);margin-left:auto;flex-shrink:0}
+
+/* ZOOM CONTROLS */
+.zoom-controls{display:flex;flex-direction:column;gap:3px;flex-shrink:0}
+.zoom-btn{width:28px;height:28px;background:var(--surface2);border:1px solid var(--border2);border-radius:7px;color:var(--text2);font-size:15px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .12s;font-weight:600;line-height:1}
+.zoom-btn:active,.zoom-btn:hover{background:var(--surface3);color:var(--text);border-color:var(--orange)}
+.zoom-reset{font-size:12px}
+@media(min-width:768px){.zoom-controls{flex-direction:row}.zoom-btn{width:30px;height:30px}}
+
+/* MAP — allow pointer events on zoom */
+.map-wrap{flex:1;display:flex;flex-direction:column;overflow:hidden;position:relative}
+.hint{text-align:center;font-size:10px;color:var(--text3);padding:3px 0 2px;font-family:'Inter Mono',monospace;letter-spacing:0.3px;flex-shrink:0}
+#msw{flex:1;position:relative;overflow:hidden;padding:2px 8px 8px}
+#msw svg{width:100%;height:100%;touch-action:none;display:block}
+.sp{transition:fill .15s}
+
+/* LEGEND */
+.legend-mini{position:absolute;bottom:10px;left:10px;background:rgba(11,15,26,0.92);border:1px solid var(--border2);border-radius:10px;padding:7px 10px;display:flex;flex-direction:column;gap:3px;z-index:5;backdrop-filter:blur(8px)}
+.leg-row{display:flex;align-items:center;gap:6px;font-size:10px;color:var(--text2)}
+.leg-swatch{width:16px;height:8px;border-radius:2px;flex-shrink:0}
+
+/* OVERLAY + SHEET */
+.sheet-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:40;opacity:0;pointer-events:none;transition:opacity .3s;backdrop-filter:blur(2px)}
+.sheet-overlay.open{opacity:1;pointer-events:all}
+.bottom-sheet{position:fixed;bottom:0;left:0;right:0;z-index:50;background:var(--surface);border-radius:var(--sheet-radius) var(--sheet-radius) 0 0;border-top:1px solid var(--border2);transform:translateY(100%);transition:transform .35s cubic-bezier(.32,.72,0,1);max-height:92vh;display:flex;flex-direction:column;overflow:visible}
+.bottom-sheet.open{transform:translateY(0)}
+.sheet-handle{width:36px;height:4px;background:var(--border2);border-radius:2px;margin:10px auto 0;flex-shrink:0}
+
+/* SHEET HEAD */
+.sheet-head{padding:10px 14px 8px;border-bottom:1px solid var(--border);flex-shrink:0;overflow:visible}
+.sheet-title-row{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:8px}
+.sheet-state{font-size:17px;font-weight:700;letter-spacing:-0.4px}
+.sheet-sub{font-size:10px;color:var(--text3);font-family:'Inter Mono',monospace;margin-top:2px}
+.btn-close{width:28px;height:28px;border-radius:50%;background:var(--surface2);border:1px solid var(--border2);color:var(--text2);font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .12s}
+.btn-close:active{background:var(--surface3)}
+.action-row{display:flex;gap:8px}
+.btn-action{flex:1;display:flex;align-items:center;justify-content:center;gap:5px;padding:8px;border-radius:8px;font-family:'Inter',sans-serif;font-size:12px;font-weight:600;cursor:pointer;transition:all .15s;border:1px solid}
+.btn-xl{border-color:var(--orange);background:var(--orange-dim);color:var(--orange)}
+.btn-xl:active{background:rgba(249,115,22,0.3)}
+.btn-customize{border-color:var(--green);background:var(--green-dim);color:var(--green)}
+.btn-customize:active{background:rgba(34,197,94,0.28)}
+.btn-customize.editing{border-color:#ef4444;background:rgba(239,68,68,0.15);color:#ef4444}
+.btn-ai{border-color:var(--purple);background:var(--purple-dim);color:var(--purple);flex:0 0 auto;padding:8px 12px}
+.btn-ai:active{background:rgba(167,139,250,0.28)}
+
+/* CATEGORY BAR */
+.cat-bar{padding:7px 12px 5px;border-bottom:none;display:flex;gap:5px;overflow-x:auto;flex-shrink:0;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.cat-bar::-webkit-scrollbar{display:none}
+.cat-bar .cpill{flex-shrink:0}
+.pharm-bar{padding:4px 12px 7px;border-bottom:1px solid var(--border);display:flex;gap:5px;overflow-x:auto;flex-shrink:0;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.pharm-bar::-webkit-scrollbar{display:none}
+.pharm-bar .ppill{flex-shrink:0}
+.pharm-bar::-webkit-scrollbar{display:none}
+.ppill{display:inline-flex;align-items:center;gap:5px;padding:3px 10px 3px 7px;border-radius:20px;border:1.5px solid var(--border2);background:transparent;color:var(--text3);font-size:11px;font-family:'Inter',sans-serif;font-weight:500;cursor:pointer;white-space:nowrap;transition:all .15s;flex-shrink:0}
+.ppill:hover{color:var(--text2);border-color:var(--text3)}
+.ppill.on{font-weight:700;color:#fff}
+.cat-bar::-webkit-scrollbar{display:none}
+.cpill{font-size:11px;padding:3px 9px;border-radius:20px;border:1px solid var(--border2);background:transparent;color:var(--text2);cursor:pointer;font-family:'Inter',sans-serif;white-space:nowrap;flex-shrink:0;transition:all .12s}
+.cpill.on{background:var(--orange-dim);color:var(--orange);border-color:var(--orange);font-weight:500}
+
+/* EDIT MODE NOTICE */
+.edit-banner{background:rgba(34,197,94,0.1);border-bottom:1px solid rgba(34,197,94,0.25);padding:6px 14px;font-size:11px;color:#86efac;display:none;flex-shrink:0;gap:6px;align-items:center}
+.edit-banner.show{display:flex}
+
+/* SKU LIST */
+.sku-scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch}
+.pharm-group{border-bottom:1px solid var(--border)}
+.pharm-hdr{padding:7px 14px;display:flex;align-items:center;gap:7px;background:rgba(255,255,255,0.02);position:sticky;top:0;z-index:2;border-bottom:1px solid var(--border)}
+.pharm-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.pharm-name{font-size:11px;font-weight:600}
+.pharm-count{margin-left:auto;font-size:9px;font-family:'Inter Mono',monospace;color:var(--text3);background:var(--surface2);padding:1px 6px;border-radius:3px}
+
+.sku-card{padding:9px 14px;border-bottom:1px solid var(--border);display:flex;flex-direction:column;gap:5px}
+.sku-card.modified{background:rgba(34,197,94,0.05);border-left:2px solid var(--green)}
+.sku-name{font-size:12px;font-weight:600;color:var(--text);line-height:1.4}
+.sku-meta{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+.sku-cat{font-size:9px;padding:2px 5px;border-radius:4px;font-weight:600}
+.sku-form{font-size:10px;color:var(--text3)}
+.sku-strength{font-size:10px;color:var(--text2)}
+.sku-price-row{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.sku-price{font-size:13px;font-weight:700;color:var(--orange);font-family:'Inter Mono',monospace}
+.sku-price.modified{color:var(--green)}
+.sku-orig{font-size:10px;color:var(--text3);font-family:'Inter Mono',monospace;text-decoration:line-through}
+.price-input{font-size:13px;font-weight:700;color:var(--green);font-family:'Inter Mono',monospace;background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.4);border-radius:6px;padding:3px 8px;width:90px;text-align:right;outline:none;-webkit-appearance:none}
+.price-input:focus{border-color:var(--green);background:rgba(34,197,94,0.15)}
+
+/* AI CHAT PANEL */
+.ai-panel{position:fixed;inset:0;z-index:60;display:flex;flex-direction:column;background:var(--bg);transform:translateY(100%);transition:transform .3s cubic-bezier(.32,.72,0,1)}
+.ai-panel.open{transform:translateY(0)}
+.ai-head{height:52px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 16px;flex-shrink:0}
+.ai-title{display:flex;align-items:center;gap:8px;font-weight:600;font-size:14px}
+.ai-badge{font-size:9px;padding:2px 7px;border-radius:20px;background:var(--purple-dim);color:var(--purple);border:1px solid rgba(167,139,250,0.3);font-family:'Inter Mono',monospace;letter-spacing:0.3px}
+.ai-messages{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:12px;-webkit-overflow-scrolling:touch}
+.msg{max-width:88%;display:flex;flex-direction:column;gap:4px}
+.msg.user{align-self:flex-end;align-items:flex-end}
+.msg.ai{align-self:flex-start;align-items:flex-start}
+.msg-bubble{padding:10px 13px;border-radius:14px;font-size:13px;line-height:1.5}
+.msg.user .msg-bubble{background:var(--orange-dim);border:1px solid rgba(249,115,22,0.3);color:var(--text);border-bottom-right-radius:4px}
+.msg.ai .msg-bubble{background:var(--surface2);border:1px solid var(--border2);color:var(--text);border-bottom-left-radius:4px}
+.msg-bubble.loading{color:var(--text3);font-style:italic}
+.ai-footer{padding:12px 14px;border-top:1px solid var(--border);background:var(--surface);flex-shrink:0;display:flex;gap:8px;align-items:flex-end}
+.ai-input{flex:1;background:var(--surface2);border:1px solid var(--border2);border-radius:12px;padding:10px 13px;color:var(--text);font-family:'Inter',sans-serif;font-size:13px;outline:none;resize:none;min-height:42px;max-height:120px;line-height:1.5;-webkit-appearance:none}
+.ai-input:focus{border-color:var(--purple)}
+.ai-send{width:40px;height:40px;border-radius:10px;background:var(--purple-dim);border:1px solid rgba(167,139,250,0.4);color:var(--purple);font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s}
+.ai-send:active{background:rgba(167,139,250,0.3)}
+.suggestion-chips{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
+.suggestion-chips::-webkit-scrollbar{display:none}
+.chip{padding:5px 11px;border-radius:20px;border:1px solid rgba(167,139,250,0.3);background:var(--purple-dim);color:var(--purple);font-size:11px;cursor:pointer;white-space:nowrap;font-family:'Inter',sans-serif;transition:all .12s}
+.chip:active{background:rgba(167,139,250,0.3)}
+.apply-btn{display:inline-flex;align-items:center;gap:5px;margin-top:8px;padding:7px 13px;border-radius:8px;background:var(--green-dim);border:1px solid rgba(34,197,94,0.4);color:var(--green);font-size:12px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif}
+
+/* DESKTOP */
+@media(min-width:768px){
+  .conf-badge{display:block}
+  .bottom-sheet{position:fixed;top:0;right:0;bottom:0;left:auto;width:440px;max-height:100vh;border-radius:0;border-left:1px solid var(--border2);border-top:none;transform:translateX(100%)}
+  .bottom-sheet.open{transform:translateX(0)}
+  .sheet-overlay{display:none}
+  .sheet-handle{display:none}
+  .body{flex-direction:row}
+  .map-wrap{flex:1}
+  .ai-panel{left:auto;right:0;width:440px;border-left:1px solid var(--border2)}
+}
+</style>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' https: data: blob: *; connect-src *; img-src * data: blob:;">
+</head>
+<body>
+<div class="app">
+<div class="hdr">
+  <div class="logo"><div class="logo-mark">Rx</div><div class="logo-text">Boom<span>Rx</span></div></div>
+  <div class="prod-search-wrap">
+    <span class="prod-search-icon">⌕</span>
+    <input id="prod-search" class="prod-search-input" type="text" placeholder="Search products across all states…" autocomplete="off" oninput="onProdSearch(this.value)" onkeydown="onProdSearchKey(event)">
+    <button class="prod-search-clear" id="prod-search-clear" onclick="clearProdSearch()" style="display:none">✕</button>
+  </div>
+  <div class="conf-badge">INTERNAL ONLY</div>
+</div>
+
+<!-- PRODUCT SEARCH RESULTS PANEL -->
+<div class="prod-panel" id="prod-panel" style="display:none">
+  <div class="prod-panel-head">
+    <div class="prod-panel-title" id="prod-panel-title">Product Search</div>
+    <button class="btn-close" onclick="closeProdPanel()">✕</button>
+  </div>
+  <div class="prod-panel-body" id="prod-panel-body"></div>
+</div>
+
+<div class="body">
+  <div class="map-wrap">
+    <div class="pill-bar" id="pill-bar">
+      <button class="pill active" id="pf-all" onclick="setPF(null)"><span class="pill-dot" style="background:#94a3b8"></span>All</button>
+      <button class="pill" id="pf-americas" onclick="setPF('americas')"><span class="pill-dot" style="background:#f97316"></span>America's Best</button>
+      <button class="pill" id="pf-vios" onclick="setPF('vios')"><span class="pill-dot" style="background:#38bdf8"></span>Vios</button>
+      <button class="pill" id="pf-emerald" onclick="setPF('emerald')"><span class="pill-dot" style="background:#34d399"></span>Emerald</button>
+      <button class="pill" id="pf-riteaway" onclick="setPF('riteaway')"><span class="pill-dot" style="background:#f472b6"></span>RiteAway</button>
+      <button class="pill" id="pf-boudrx" onclick="setPF('boudrx')"><span class="pill-dot" style="background:#a78bfa"></span>Boudreaux's</button>
+      <button class="pill" id="pf-prorx" onclick="setPF('prorx')"><span class="pill-dot" style="background:#fbbf24"></span>ProRx</button>
+    </div>
+    <!-- FORMULARY STATUS BAR -->
+    <div id="formulary-status" class="formulary-status" style="display:none"></div>
+
+    <!-- SEARCH + ZOOM ROW -->
+    <div class="map-toolbar">
+      <div class="search-wrap">
+        <span class="search-icon">⌕</span>
+        <input id="state-search" class="search-input" type="text" placeholder="Search state…" autocomplete="off" oninput="onSearch(this.value)" onkeydown="onSearchKey(event)">
+        <button class="search-clear" id="search-clear" onclick="clearSearch()" style="display:none">✕</button>
+        <div class="search-dropdown" id="search-dropdown"></div>
+      </div>
+      <div class="zoom-controls">
+        <button class="zoom-btn" onclick="zoomIn()">+</button>
+        <button class="zoom-btn zoom-reset" onclick="zoomReset()">⊙</button>
+        <button class="zoom-btn" onclick="zoomOut()">−</button>
+      </div>
+    </div>
+    <div class="hint">Tap a state or search · Scroll to zoom · Drag to pan</div>
+    <div id="msw" style="position:relative">
+      <div id="map-loading" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;z-index:5;background:var(--bg)">
+        <div style="text-align:center;font-family:'Inter',sans-serif">
+          <div class="sheet-loading-spinner" style="margin:0 auto 10px"></div>
+          <div style="font-size:11px;color:var(--text3);font-family:'Inter Mono',monospace">Loading map…</div>
+        </div>
+      </div>
+    </div>
+    <div class="legend-mini">
+      <div class="leg-row"><div class="leg-swatch" id="leg-multi"></div>Multiple</div>
+      <div class="leg-row"><div class="leg-swatch" style="background:#f97316"></div>America's Best</div>
+      <div class="leg-row"><div class="leg-swatch" style="background:#38bdf8"></div>Vios</div>
+      <div class="leg-row"><div class="leg-swatch" style="background:#34d399"></div>Emerald</div>
+      <div class="leg-row"><div class="leg-swatch" style="background:#f472b6"></div>RiteAway</div>
+      <div class="leg-row"><div class="leg-swatch" style="background:#a78bfa"></div>Boudreaux's</div>
+      <div class="leg-row"><div class="leg-swatch" style="background:#fbbf24"></div>ProRx</div>
+      <div class="leg-row"><div class="leg-swatch" style="background:#1c2333;border:1px solid #2a3347"></div>None</div>
+    </div>
+  </div>
+
+  <!-- BOTTOM SHEET / RIGHT PANEL -->
+  <div class="sheet-overlay" id="overlay" onclick="closeSheet()"></div>
+  <div class="bottom-sheet" id="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-head">
+      <div class="sheet-title-row">
+        <div><div class="sheet-state" id="sheet-state">—</div><div class="sheet-sub" id="sheet-sub"></div></div>
+        <button class="btn-close" onclick="closeSheet()">✕</button>
+      </div>
+      <div class="action-row">
+        <button class="btn-action btn-customize" id="btn-customize" onclick="toggleEdit()">✎ Customize Prices</button>
+        <button class="btn-action btn-xl" onclick="exportExcel()">↓ Export</button>
+        <button class="btn-action btn-summary" onclick="prescriberSummary()" title="Generate prescriber-ready summary">📋 Summary</button>
+        <button class="btn-action btn-ai" onclick="openAI()" title="AI Pricing Assistant">✦ AI</button>
+      </div>
+    </div>
+    <div class="edit-banner" id="edit-banner">✎ &nbsp;Editing prices — changes apply to this export only and reset after download</div>
+    <div class="cat-bar" id="cat-bar"></div>
+    <div class="pharm-bar" id="pharm-bar"></div>
+    <div class="sku-scroll" id="sku-scroll"></div>
+  </div>
+
+  <!-- AI PANEL -->
+  <div class="ai-panel" id="ai-panel">
+    <div class="ai-head">
+      <div class="ai-title">✦ BoomRx Assistant <span class="ai-badge">powered by Claude</span></div>
+      <button class="btn-close" onclick="closeAI()">✕</button>
+    </div>
+    <div class="ai-messages" id="ai-messages">
+      <div class="msg ai">
+        <div class="msg-bubble">Hi! I can help you create custom pricing for <strong id="ai-state-name">this state</strong>. Try something like:<br><br>
+        • "10% off all peptides"<br>
+        • "$15 off all weight loss injections"<br>
+        • "Round all prices down to nearest $5"<br>
+        • "20% off everything"<br>
+        • "Match competitor at $85 for semaglutide"
+        </div>
+        <div class="suggestion-chips" style="margin-top:6px">
+          <button class="chip" onclick="fillPrompt('Which pharmacies are licensed in this state?')" style="border-color:rgba(56,189,248,0.3);background:rgba(56,189,248,0.08);color:#38bdf8">Who's licensed here?</button>
+          <button class="chip" onclick="fillPrompt('Get the Emerald license for this state')" style="border-color:rgba(52,211,153,0.3);background:rgba(52,211,153,0.08);color:#34d399">Emerald license</button>
+          <button class="chip" onclick="fillPrompt('Get the Vios license for this state')" style="border-color:rgba(56,189,248,0.3);background:rgba(56,189,248,0.08);color:#38bdf8">Vios license</button>
+          <button class="chip" onclick="fillPrompt('List all license numbers for this state')">All licenses</button>
+          <button class="chip" onclick="fillPrompt('10% off all peptides')">10% off peptides</button>
+          <button class="chip" onclick="fillPrompt('$10 off all weight loss')">$10 off weight loss</button>
+          <button class="chip" onclick="fillPrompt('5% off everything')">5% off everything</button>
+          <button class="chip" onclick="fillPrompt('Round all prices down to nearest $5')">Round down to $5</button>
+        </div>
+      </div>
+    </div>
+    <div class="ai-footer">
+      <div style="display:flex;flex-direction:column;gap:8px;flex:1">
+        <textarea class="ai-input" id="ai-input" placeholder="e.g. 'Emerald license for this state' or '10% off peptides'…" rows="1" onkeydown="handleAIKey(event)"></textarea>
+      </div>
+      <button class="ai-send" onclick="sendAI()">↑</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── DATA ───────────────────────────────────────────────────────────────
+const PH=[
+  {id:'americas',name:"America's Best",color:'#f97316',hex:'f97316'},
+  {id:'vios',    name:'Vios',          color:'#38bdf8',hex:'38bdf8'},
+  {id:'emerald', name:'Emerald',       color:'#34d399',hex:'34d399'},
+  {id:'riteaway',name:'RiteAway',      color:'#f472b6',hex:'f472b6'},
+  {id:'boudrx',  name:"Boudreaux's",  color:'#a78bfa',hex:'a78bfa'},
+  {id:'prorx',   name:'ProRx',         color:'#fbbf24',hex:'fbbf24'},
+];
+const COV={
+  americas:new Set(['AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','ID','IL','IN','IA','KS','KY','LA','ME','MD','MA','MI','MN','MO','MT','NE','NV','NH','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WI','WY','WV']),
+  vios:new Set(['AL','AK','AZ','AR','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA','KS','KY','LA','ME','MD','MA','MI','MN','MO','MS','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WI','WY','WV']),
+  emerald:new Set(['AK','AZ','CO','CT','DE','FL','GA','HI','ID','IL','IA','ME','MD','MO','MT','NE','NH','NJ','NM','NY','NC','ND','OH','OK','PA','RI','SD','UT','VT','WA','WV','WI','WY']),
+  riteaway:new Set(['AZ','CO','CT','DE','FL','GA','ID','IL','IN','IA','KS','MA','ME','MN','MO','MT','NM','NY','OH','OK','OR','PA','RI','SD','TX','UT','VT','WI','WV','WY']),
+  prorx:new Set([]),
+  boudrx:new Set(['MD','WA','AK','GA','KS','KY','MN','OK','SC','SD','WV','WY','NE','TX','DE','RI','NH','AZ','CO','NV','MT','AL','ID','IA','LA','ME','MA','NM','NC','FL','CA','OH','OR','MI','ND','VT','PA','TN','NY','UT','MO','IN','MS','IL','WI']),
+};
+const FIPS={'01':'AL','02':'AK','04':'AZ','05':'AR','06':'CA','08':'CO','09':'CT','10':'DE','12':'FL','13':'GA','15':'HI','16':'ID','17':'IL','18':'IN','19':'IA','20':'KS','21':'KY','22':'LA','23':'ME','24':'MD','25':'MA','26':'MI','27':'MN','28':'MS','29':'MO','30':'MT','31':'NE','32':'NV','33':'NH','34':'NJ','35':'NM','36':'NY','37':'NC','38':'ND','39':'OH','40':'OK','41':'OR','42':'PA','44':'RI','45':'SC','46':'SD','47':'TN','48':'TX','49':'UT','50':'VT','51':'VA','53':'WA','54':'WV','55':'WI','56':'WY'};
+const AN={'AL':'Alabama','AK':'Alaska','AZ':'Arizona','AR':'Arkansas','CA':'California','CO':'Colorado','CT':'Connecticut','DE':'Delaware','FL':'Florida','GA':'Georgia','HI':'Hawaii','ID':'Idaho','IL':'Illinois','IN':'Indiana','IA':'Iowa','KS':'Kansas','KY':'Kentucky','LA':'Louisiana','ME':'Maine','MD':'Maryland','MA':'Massachusetts','MI':'Michigan','MN':'Minnesota','MS':'Mississippi','MO':'Missouri','MT':'Montana','NE':'Nebraska','NV':'Nevada','NH':'New Hampshire','NJ':'New Jersey','NM':'New Mexico','NY':'New York','NC':'North Carolina','ND':'North Dakota','OH':'Ohio','OK':'Oklahoma','OR':'Oregon','PA':'Pennsylvania','RI':'Rhode Island','SC':'South Carolina','SD':'South Dakota','TN':'Tennessee','TX':'Texas','UT':'Utah','VT':'Vermont','VA':'Virginia','WA':'Washington','WV':'West Virginia','WI':'Wisconsin','WY':'Wyoming'};
+const OV={'ME':[865,165],'VT':[800,190],'NH':[815,195],'MA':[832,215],'RI':[822,232],'CT':[803,240],'NJ':[784,265],'DE':[779,280],'MD':[755,292],'HI':[235,535],'AK':[155,520]};
+
+const CC={'Weight Loss':['rgba(249,115,22,0.15)','#f97316'],'HRT':['rgba(56,189,248,0.15)','#38bdf8'],'Sexual Health':['rgba(244,114,182,0.15)','#f472b6'],'Peptide':['rgba(167,139,250,0.15)','#a78bfa'],'Anti-Aging':['rgba(251,191,36,0.15)','#fbbf24'],'Wellness':['rgba(52,211,153,0.15)','#34d399'],'Dermatology':['rgba(249,115,22,0.1)','#fb923c'],'Hair Loss':['rgba(148,163,184,0.15)','#94a3b8'],'Cosmetic':['rgba(232,121,249,0.12)','#e879f9'],'Skin Health':['rgba(253,186,116,0.12)','#fdba74'],'HGH':['rgba(239,68,68,0.15)','#ef4444']};
+const CAT_XL={'Weight Loss':{bg:'FF1C1208',font:'FFf97316'},'HRT':{bg:'FF0C1C28',font:'FF38bdf8'},'Sexual Health':{bg:'FF2A0F1C',font:'FFf472b6'},'Peptide':{bg:'FF1A1628',font:'FFa78bfa'},'Anti-Aging':{bg:'FF261E08',font:'FFfbbf24'},'Wellness':{bg:'FF0C2018',font:'FF34d399'},'Dermatology':{bg:'FF231408',font:'FFfb923c'},'Hair Loss':{bg:'FF1A1E24',font:'FF94a3b8'},'Cosmetic':{bg:'FF28102A',font:'FFe879f9'},'Skin Health':{bg:'FF261808',font:'FFfdba74'},'HGH':{bg:'FF2A0C0C',font:'FFef4444'}};
+
+// ─── LIVE FORMULARY — fetched from Google Sheets ─────────────────────────
+// SHEET_ID: set this to your published Google Sheet ID
+// The sheet must be published to web (File → Share → Publish to web → CSV)
+// Column order: Pharmacy | Product Name | Category | Form | Strength | List Price | True Cost | Active
+// SHEET_ID: BoomRx Master Formulary
+// Published CSV URL (File → Share → Publish to web → CSV)
+// ─── API KEY — paste your Anthropic key here ──────────────────────────────
+const ANTHROPIC_KEY = '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';
+
+const PUBLISHED_CSV = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQVb72SXk6ORGTwdg1dNXriz9GxWyiHW9rI5lbNjZA2rPtl7Aq_A9Zlz1epbbvtUCHWsVGcyt7PMbuv/pub?gid=81503817&single=true&output=csv';
+
+// ─── LICENSE SHEET ─────────────────────────────────────────────────────────
+// Paste your published license sheet CSV URL here after setting it up
+// File → Share → Publish to web → License tab → CSV → copy URL
+let LICENSE_SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vR89kVA__JNhwH14paB_tMdXFFzp_eyKEoe268VR-KF-hf0T3TZqGMYMBraw0Q3z1GRWJ81o7mwI9pc/pub?gid=205156752&single=true&output=csv';
+let licenseSheetLoaded = false;
+
+const PHARM_NAME_TO_ID = {
+  "america's best":'americas', "americas best":'americas',
+  "vios":'vios', "vios pharmacy":'vios',
+  "emerald":'emerald', "emerald compounding":'emerald',
+  "riteaway":'riteaway', "rite away":'riteaway', "rite-away":'riteaway',
+  "boudreaux's":'boudrx', "boudreaux":'boudrx', "boudrx":'boudrx',
+  "prorx":'prorx', "pro rx":'prorx', "prorx pharmacy":'prorx', "pro-rx":'prorx', "prorx compounding":'prorx',
+};
+
+async function fetchLicenseSheet() {
+  if(!LICENSE_SHEET_URL || licenseSheetLoaded) return;
+  // Try the direct URL, then with cache-bust
+  const urls = [
+    LICENSE_SHEET_URL,
+    LICENSE_SHEET_URL + '&t=' + Date.now()
+  ];
+  let text = null;
+  for(const url of urls){
+    try{
+      console.log('[BoomRx] License fetch:', url.substring(0,80));
+      const resp = await fetch(url, {cache:'no-store', redirect:'follow'});
+      const t = await resp.text();
+      if(t && t.trim().length > 10 && t.trim()[0] !== '<'){
+        text = t; break;
+      }
+      console.warn('[BoomRx] License URL returned bad data, trying next...');
+    } catch(e){ console.warn('[BoomRx] License fetch error:', e.message); }
+  }
+  if(!text){ console.warn('[BoomRx] License sheet unavailable — using built-in data'); return; }
+
+  const rows = parseCSV(text);
+  console.log('[BoomRx] License sheet rows:', rows.length);
+  if(rows.length === 0){ console.warn('[BoomRx] License sheet parsed 0 rows'); return; }
+  console.log('[BoomRx] License sheet columns:', Object.keys(rows[0]).join(', '));
+
+  // Clear existing LICENSE_DB entries so we start fresh from sheet
+  Object.keys(LICENSE_DB).forEach(pid => { LICENSE_DB[pid] = {}; });
+
+  let loaded = 0;
+  rows.forEach(row => {
+    const pharmRaw = (row['pharmacy']||'').toLowerCase().trim();
+    const pharmId  = PHARM_NAME_TO_ID[pharmRaw];
+    const state    = (row['state code']||row['statecode']||'').trim().toUpperCase().slice(0,2);
+    if(!pharmId || !state || state.length !== 2) return;
+
+    const activeRaw = (row['active']||'true').toLowerCase().trim();
+    const isActive  = activeRaw !== 'false' && activeRaw !== 'no' && activeRaw !== '0';
+
+    if(!COV[pharmId]) return;
+    if(!isActive){ COV[pharmId].delete(state); return; }
+
+    COV[pharmId].add(state);
+    if(!LICENSE_DB[pharmId][state]) LICENSE_DB[pharmId][state] = [];
+    LICENSE_DB[pharmId][state].push({
+      num:   row['license #'] || row['license'] || null,
+      type:  row['type'] || '503A',
+      exp:   row['expires'] || null,
+      notes: row['notes'] || '',
+    });
+    loaded++;
+  });
+
+  licenseSheetLoaded = true;
+  console.log('[BoomRx] License DB loaded:', loaded, 'entries');
+  console.log('[BoomRx] Sample Emerald FL:', JSON.stringify(LICENSE_DB['emerald']&&LICENSE_DB['emerald']['FL']));
+  if(typeof updateMapFills === 'function') updateMapFills();
+}
+function getSheetURLs() {
+  const direct = PUBLISHED_CSV;
+  const proxy1 = `https://corsproxy.io/?${encodeURIComponent(direct)}`;
+  const proxy2 = `https://api.allorigins.win/raw?url=${encodeURIComponent(direct)}`;
+  const proxy3 = `https://corsproxy.io/?${encodeURIComponent(direct)}&nocache=${Date.now()}`;
+  return [direct, proxy1, proxy2, proxy3];
+}
+
+// PHARMACY NAME → ID mapping (matches PH array)
+const PHARM_NAME_MAP = {
+  "america's best": 'americas',
+  "americas best": 'americas',
+  "america's best care": 'americas',
+  "503a america's best care": 'americas',
+  "503a americas best": 'americas',
+  "vios": 'vios',
+  "503a vios": 'vios',
+  "vios pharmacy": 'vios',
+  "emerald": 'emerald',
+  "emerald compounding": 'emerald',
+  "emerald compounding pharmacy": 'emerald',
+  "503a emerald compounding pharmacy": 'emerald',
+  "riteaway": 'riteaway',
+  "rite away": 'riteaway',
+  "rite-away": 'riteaway',
+  "riteaway pharmacy": 'riteaway',
+  "boudreaux's": 'boudrx',
+  "boudreaux": 'boudrx',
+  "boudrx": 'boudrx',
+  "boudreaux's new drug store": 'boudrx',
+  "boudreaux's pharmacy": 'boudrx',
+  "prorx": 'prorx',
+  "pro rx": 'prorx',
+  "pro-rx": 'prorx',
+  "prorx pharmacy": 'prorx',
+  "prorx compounding": 'prorx',
+  "503b prorx": 'prorx',
+};
+
+// Live data store — populated on fetch, structured like SKUS_ORIG was
+let SKUS_LIVE = { americas:[], vios:[], emerald:[], riteaway:[], boudrx:[], prorx:[] };
+let formularyLoaded = false;
+let formularyError = null;
+let loadingPromise = null;
+
+function parseCSV(text) {
+  const lines = text.trim().split('\n');
+  const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g,'').toLowerCase());
+  return lines.slice(1).map(line => {
+    // Handle quoted fields properly
+    const cols = [];
+    let cur = '', inQ = false;
+    for (let i = 0; i < line.length; i++) {
+      if (line[i] === '"') { inQ = !inQ; }
+      else if (line[i] === ',' && !inQ) { cols.push(cur.trim()); cur = ''; }
+      else cur += line[i];
+    }
+    cols.push(cur.trim());
+    const obj = {};
+    headers.forEach((h, i) => obj[h] = (cols[i] || '').replace(/^"|"$/g, '').trim());
+    return obj;
+  });
+}
+
+async function fetchFormulary() {
+  if (loadingPromise) return loadingPromise;
+  loadingPromise = (async () => {
+    showFormularyStatus('loading');
+    const urls = getSheetURLs();
+    let lastErr = null;
+
+    for (const url of urls) {
+      try {
+        console.log('[BoomRx] Trying:', url.substring(0, 80) + '…');
+        const resp = await fetch(url, { cache: 'no-store' });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const text = await resp.text();
+        if (!text || text.trim().length < 10) throw new Error('Empty response');
+        // Sanity check — should look like CSV
+        if (text.trim()[0] === '<') throw new Error('Got HTML instead of CSV');
+
+        const rows = parseCSV(text);
+        console.log(`[BoomRx] Got ${rows.length} rows from: ${url.substring(0,60)}`);
+        if (rows.length === 0) throw new Error('Zero rows parsed');
+
+        // Reset and populate
+        SKUS_LIVE = { americas:[], vios:[], emerald:[], riteaway:[], boudrx:[], prorx:[] };
+        let skipped = 0, unmatched = [];
+
+        rows.forEach(row => {
+          const active = (row['active'] || '').toLowerCase().trim();
+          if (active === 'false' || active === 'no' || active === '0') { skipped++; return; }
+          if (active === '' && Object.keys(row).includes('active')) { skipped++; return; }
+
+          const pharmRaw = (row['pharmacy'] || '').toLowerCase().trim();
+          const pharmId = PHARM_NAME_MAP[pharmRaw];
+          if (!pharmId || !SKUS_LIVE[pharmId]) {
+            if (pharmRaw && !unmatched.includes(pharmRaw)) unmatched.push(pharmRaw);
+            return;
+          }
+
+          const price = row['list price'] || row['listprice'] || row['price'] || '';
+          const trueCost = row['true cost'] || row['truecost'] || row['cost'] || '';
+
+          SKUS_LIVE[pharmId].push({
+            name: row['product name'] || row['productname'] || row['name'] || '',
+            cat:  row['category'] || '',
+            form: row['form'] || '',
+            strength: row['strength'] || '',
+            price: price.startsWith('$') ? price : (parseFloat(price || 0) ? '$' + parseFloat(price).toFixed(2) : price),
+            trueCost: trueCost,
+          });
+        });
+
+        const total = Object.values(SKUS_LIVE).reduce((s,a)=>s+a.length, 0);
+        console.log(`[BoomRx] Loaded ${total} active SKUs, skipped ${skipped} inactive`);
+        if (unmatched.length) console.warn('[BoomRx] Unmatched pharmacy names:', unmatched);
+
+        formularyLoaded = true;
+        formularyError = null;
+        showFormularyStatus('loaded', total);
+        return; // success — stop trying URLs
+
+      } catch(err) {
+        console.warn('[BoomRx] URL failed:', err.message);
+        lastErr = err;
+      }
+    }
+
+    // All URLs failed
+    formularyError = lastErr ? lastErr.message : 'All sources failed';
+    formularyLoaded = false;
+    showFormularyStatus('error', 0, formularyError);
+    console.error('[BoomRx] All formulary sources failed. Last error:', lastErr);
+  })();
+  return loadingPromise;
+}
+
+function showFormularyStatus(state, count, errMsg) {
+  const bar = document.getElementById('formulary-status');
+  if (!bar) return;
+  if (state === 'loading') {
+    bar.innerHTML = `<span class="fs-dot fs-loading"></span> Loading live formulary…`;
+    bar.className = 'formulary-status loading';
+    bar.style.display = 'flex';
+  } else if (state === 'loaded') {
+    bar.innerHTML = `<span class="fs-dot fs-ok"></span> Live formulary · ${count} active SKUs · <span class="fs-refresh" onclick="refreshFormulary()">Refresh ↺</span>`;
+    bar.className = 'formulary-status loaded';
+    setTimeout(() => { if (bar.className.includes('loaded')) bar.style.display = 'none'; }, 4000);
+  } else {
+    bar.innerHTML = `<span class="fs-dot fs-err"></span> Could not load live formulary — <span class="fs-refresh" onclick="refreshFormulary()">Retry ↺</span>`;
+    bar.className = 'formulary-status error';
+    bar.style.display = 'flex';
+  }
+}
+
+async function refreshFormulary() {
+  loadingPromise = null;
+  await fetchFormulary();
+  if (cST) renderSheet(cST);
+}
+
+// Accessor — always use SKUS_LIVE
+function getSKUs(pharmId) { return SKUS_LIVE[pharmId] || []; }
+
+
+// ─── STATE ────────────────────────────────────────────────────────────────
+let aPF=null, aCF='All', aPhF=new Set(), cST=null, isEditing=false;
+// customPrices: { pharmId_skuIndex: '$XX.XX' } — per-session only, cleared on export or state change
+let customPrices={};
+
+function getCov(abbr){return aPF?PH.filter(p=>p.id===aPF&&COV[p.id].has(abbr)):PH.filter(p=>COV[p.id].has(abbr));}
+function getPrice(pharmId, idx){var _cp=customPrices[pharmId+'_'+idx]; var _sk=getSKUs(pharmId)[idx]; return _cp!==undefined?_cp:(_sk&&_sk.price?_sk.price:'');}
+function setPrice(pharmId, idx, val){customPrices[pharmId+'_'+idx]=val;}
+function hasCustom(pharmId, idx){var _sk2=getSKUs(pharmId)[idx]; var _sp=_sk2?_sk2.price:''; return customPrices[pharmId+'_'+idx]!==undefined && customPrices[pharmId+'_'+idx]!==_sp;}
+function hasAnyCustom(){return Object.keys(customPrices).length>0;}
+function clearCustomPrices(){customPrices={};}
+
+// ─── MAP SETUP ────────────────────────────────────────────────────────────
+const legEl=document.getElementById('leg-multi');
+if(legEl){const w=100/PH.length;legEl.style.background=`linear-gradient(90deg,${PH.map((p,i)=>`${p.color} ${i*w}%,${p.color} ${(i+1)*w}%`).join(',')})`;}
+
+function setPF(id){
+  aPF=id;
+  document.querySelectorAll('.pill').forEach(b=>b.classList.remove('active'));
+  document.getElementById(id?'pf-'+id:'pf-all').classList.add('active');
+  if(typeof updateMapFills==='function') updateMapFills(); else { buildPatterns(); mapG.selectAll('.sp').attr('fill',function(){const a=this.dataset&&this.dataset.abbr;return a?getFill(a):'#1c2333';}); }
+  if(cST) renderSheet(cST);
+}
+function getFill(abbr){
+  if(aPF) return COV[aPF].has(abbr)?PH.find(p=>p.id===aPF).color:'#1c2333';
+  const cv=PH.filter(p=>COV[p.id].has(abbr));
+  if(!cv.length) return '#1c2333';
+  if(cv.length===1) return cv[0].color;
+  return 'url(#s-'+abbr+')';
+}
+function buildPatterns(){
+  svg.select('defs').selectAll('pattern').remove();
+  if(aPF) return;
+  Object.values(FIPS).forEach(abbr=>{
+    const cv=PH.filter(p=>COV[p.id].has(abbr));
+    if(cv.length<2) return;
+    const n=cv.length,sw=8,total=n*sw;
+    const pat=svg.select('defs').append('pattern').attr('id','s-'+abbr).attr('patternUnits','userSpaceOnUse').attr('width',total).attr('height',total).attr('patternTransform','rotate(45)');
+    cv.forEach((p,i)=>{pat.append('rect').attr('x',i*sw).attr('y',0).attr('width',sw).attr('height',total).attr('fill',p.color);});
+  });
+}
+
+// ─── SHEET OPEN/CLOSE ─────────────────────────────────────────────────────
+function openSheet(){document.getElementById('sheet').classList.add('open');document.getElementById('overlay').classList.add('open');}
+function closeSheet(){
+  document.getElementById('sheet').classList.remove('open');
+  document.getElementById('overlay').classList.remove('open');
+  // reset edit mode on close — prices revert
+  if(isEditing) exitEditMode();
+}
+
+// ─── EDIT MODE ────────────────────────────────────────────────────────────
+function toggleEdit(){
+  if(isEditing) exitEditMode();
+  else enterEditMode();
+}
+function enterEditMode(){
+  isEditing=true;
+  document.getElementById('btn-customize').textContent='✕ Cancel Editing';
+  document.getElementById('btn-customize').classList.add('editing');
+  document.getElementById('edit-banner').classList.add('show');
+  renderSKUs(cST);
+}
+function exitEditMode(){
+  isEditing=false;
+  clearCustomPrices();
+  document.getElementById('btn-customize').textContent='✎ Customize Prices';
+  document.getElementById('btn-customize').classList.remove('editing');
+  document.getElementById('edit-banner').classList.remove('show');
+  renderSKUs(cST);
+}
+
+// ─── RENDER SHEET ─────────────────────────────────────────────────────────
+async function renderSheet(abbr){
+  if(cST!==abbr){
+    clearCustomPrices();
+    if(isEditing) exitEditMode();
+    aPhF=new Set();
+    aCF='All';
+  }
+  cST=abbr;
+  const name=AN[abbr]||abbr;
+  document.getElementById('sheet-state').textContent=name;
+  document.getElementById('ai-state-name').textContent=name;
+  document.getElementById('sheet-sub').textContent='Loading formulary…';
+  openSheet();
+
+  const scroll=document.getElementById('sku-scroll');
+
+  if(false){ // placeholder — sheet is always configured via PUBLISHED_CSV
+    scroll.innerHTML=`<div class="config-notice">
+      <strong>📋 Connect your Google Sheet</strong><br><br>
+      To load live formulary data, publish your sheet as CSV and paste the Sheet ID into this file.
+    </div>`;
+    document.getElementById('sheet-sub').textContent='Sheet not connected';
+    return;
+  }
+
+  if(!formularyLoaded){
+    scroll.innerHTML=`<div class="sheet-loading"><div class="sheet-loading-spinner"></div>Fetching live formulary…</div>`;
+    await fetchFormulary();
+  }
+
+  if(formularyError){
+    scroll.innerHTML=`<div class="config-notice" style="border-color:rgba(239,68,68,0.3);background:rgba(239,68,68,0.08);color:#fca5a5">
+      ⚠ Could not load live formulary.<br><br>
+      Make sure your Google Sheet is published:<br>
+      <strong>File → Share → Publish to web → Sheet → CSV → Publish</strong><br><br>
+      <span style="cursor:pointer;text-decoration:underline;color:#f97316" onclick="refreshFormulary()">↺ Tap to retry</span>
+    </div>`;
+    document.getElementById('sheet-sub').textContent='Load error — tap retry';
+    return;
+  }
+
+  const cv=getCov(abbr);
+  const tot=cv.reduce((s,p)=>s+getSKUs(p.id).length,0);
+  document.getElementById('sheet-sub').textContent=cv.length?`${cv.length} pharmacies · ${tot} active SKUs`:'No coverage';
+
+  // Category filter row
+  const cats=['All'];
+  cv.forEach(p=>getSKUs(p.id).forEach(s=>{if(!cats.includes(s.cat))cats.push(s.cat);}));
+  const cb=document.getElementById('cat-bar');
+  cb.innerHTML='';
+  cats.forEach(c=>{
+    const b=document.createElement('button');b.className='cpill'+(aCF===c?' on':'');b.textContent=c;
+    b.onclick=()=>{aCF=c;renderSKUs(abbr);};cb.appendChild(b);
+  });
+
+  // Pharmacy filter row
+  renderPharmBar(abbr, cv);
+
+  renderSKUs(abbr);
+}
+
+function renderPharmBar(abbr, cv){
+  const pb=document.getElementById('pharm-bar');
+  pb.innerHTML='';
+  if(!cv||!cv.length) return;
+
+  // "All" pill
+  const allOn=aPhF.size===0;
+  const allBtn=document.createElement('button');
+  allBtn.className='ppill'+(allOn?' on':'');
+  allBtn.style.borderColor=allOn?'#94a3b8':'';
+  allBtn.style.background=allOn?'rgba(148,163,184,0.15)':'';
+  allBtn.style.color=allOn?'#e2e8f0':'';
+  allBtn.textContent='All';
+  allBtn.onclick=()=>{aPhF=new Set();renderPharmBar(abbr,cv);renderSKUs(abbr);};
+  pb.appendChild(allBtn);
+
+  cv.forEach(p=>{
+    const on=aPhF.has(p.id);
+    const btn=document.createElement('button');
+    btn.className='ppill'+(on?' on':'');
+    btn.style.borderColor=on?p.color:'';
+    btn.style.background=on?p.color+'28':'';
+    btn.style.color=on?p.color:'';
+
+    const dot=document.createElement('span');
+    dot.style.cssText=`width:7px;height:7px;border-radius:50%;background:${p.color};flex-shrink:0;display:inline-block`;
+    btn.appendChild(dot);
+    btn.appendChild(document.createTextNode(p.name));
+
+    btn.onclick=()=>{
+      if(aPhF.has(p.id)) aPhF.delete(p.id); else aPhF.add(p.id);
+      renderPharmBar(abbr,cv);
+      renderSKUs(abbr);
+    };
+    pb.appendChild(btn);
+  });
+}
+
+function renderSKUs(abbr){
+  const cv=getCov(abbr);
+  // apply pharmacy filter
+  const show=aPhF.size>0 ? cv.filter(p=>aPhF.has(p.id)) : cv;
+  const scroll=document.getElementById('sku-scroll');
+  scroll.innerHTML='';
+  if(!cv.length){scroll.innerHTML='<div style="padding:24px;color:#475569;font-size:13px;text-align:center">No pharmacies licensed in this state.</div>';return;}
+
+  show.forEach(p=>{
+    let skList=getSKUs(p.id).map((s,idx)=>({...s,idx}));
+    if(aCF!=='All') skList=skList.filter(s=>s.cat===aCF);
+    if(!skList.length) return;
+
+    const grp=document.createElement('div');grp.className='pharm-group';
+    grp.innerHTML=`<div class="pharm-hdr"><span class="pharm-dot" style="background:${p.color}"></span><span class="pharm-name">${p.name}</span><span class="pharm-count">${skList.length}</span></div>`;
+
+    skList.forEach(s=>{
+      const cc=CC[s.cat]||['rgba(148,163,184,0.12)','#94a3b8'];
+      const curPrice=getPrice(p.id,s.idx);
+      const modified=hasCustom(p.id,s.idx);
+      const card=document.createElement('div');
+      card.className='sku-card'+(modified?' modified':'');
+
+      const priceBlock=isEditing
+        ? `<input class="price-input" type="text" value="${curPrice.replace('$','')}" 
+             onchange="handlePriceChange('${p.id}',${s.idx},this.value)"
+             onclick="this.select()">`
+        : `<span class="sku-price${modified?' modified':''}">${curPrice}</span>
+           ${modified?`<span class="sku-orig">${s.price}</span>`:''}`;
+
+      card.innerHTML=`
+        <div class="sku-name">${s.name}</div>
+        <div class="sku-meta">
+          <span class="sku-cat" style="background:${cc[0]};color:${cc[1]}">${s.cat}</span>
+          <span class="sku-form">${s.form}</span>
+          <span class="sku-strength">${s.strength}</span>
+        </div>
+        <div class="sku-price-row">${priceBlock}</div>`;
+      grp.appendChild(card);
+    });
+    scroll.appendChild(grp);
+  });
+  scroll.scrollTop=0;
+}
+
+function handlePriceChange(pharmId,idx,val){
+  val=val.trim().replace(/[^0-9.]/g,'');
+  if(!val||isNaN(parseFloat(val))) return;
+  const formatted='$'+parseFloat(val).toFixed(2);
+  setPrice(pharmId,idx,formatted);
+  // Refresh card styling without full re-render
+  renderSKUs(cST);
+}
+
+// ─── EXPORT EXCEL ─────────────────────────────────────────────────────────
+// Builds raw XML for a worksheet so fill colors are guaranteed in Excel/Sheets
+function buildXMLSheet(headers, rows, colWidths, customRowFlags, pharmColor){
+  // Shared strings approach — embed directly
+  // styles: 0=normal, 1=header, 2=custom-highlight, 3=alt-row, 4=price-custom, 5=price-normal, 6=title, 7=subtitle
+  const esc=v=>String(v!==undefined&&v!==null?v:'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  const pc=pharmColor||'F97316';
+
+  // Build XML rows
+  let xmlRows='';
+  const allRows=[headers,...rows];
+  allRows.forEach((row,ri)=>{
+    const isHeader=ri===0;
+    const isCustom=!isHeader&&customRowFlags&&customRowFlags[ri-1];
+    let xmlCells='';
+    row.forEach((val,ci)=>{
+      const cellRef=String.fromCharCode(65+ci)+(ri+1);
+      const v=esc(val!==undefined&&val!==null?val:'');
+      // Pick style index
+      let si=0;
+      if(isHeader) si=1;
+      else if(isCustom && ci===row.length-1) si=4; // price col custom
+      else if(isCustom) si=2;                        // custom highlight
+      else if(ri%2===0) si=3;                        // alt row
+      xmlCells+=`<c r="${cellRef}" s="${si}" t="inlineStr"><is><t>${v}</t></is></c>`;
+    });
+    xmlRows+=`<row r="${ri+1}">${xmlCells}</row>`;
+  });
+
+  const colXml=colWidths.map((w,i)=>`<col min="${i+1}" max="${i+1}" width="${w}" customWidth="1"/>`).join('');
+
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+           xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+<sheetData>${xmlRows}</sheetData>
+<cols>${colXml}</cols>
+</worksheet>`;
+}
+
+function exportExcel(){
+  if(!cST){alert('Select a state first.');return;}
+  const abbr=cST, name=AN[abbr]||abbr;
+  const cv=getCov(abbr);
+  if(!cv.length){alert('No coverage for this state.');return;}
+
+  const date=new Date().toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'});
+  const hasCustomPrices=hasAnyCustom();
+  const wb=XLSX.utils.book_new();
+
+  // ── MASTER SHEET ──────────────────────────────────────────────
+  const allRows=[];
+  cv.forEach(p=>{
+    getSKUs(p.id).forEach((s,idx)=>{
+      const curP=getPrice(p.id,idx);
+      const mod=hasCustom(p.id,idx);
+      allRows.push({name:s.name,cat:s.cat,form:s.form,strength:s.strength,
+        price:curP,origPrice:s.price,pharmacy:p.name,hex:p.hex,modified:mod});
+    });
+  });
+
+  // Header rows (info, blank, column headers)
+  const masterAoa=[
+    [`BoomRx Formulary — ${name}`, '', '', '', '', '', '', ''],
+    [`INTERNAL ONLY · CONFIDENTIAL · Generated ${date}`, '', '', '', '', '', '', ''],
+    [hasCustomPrices ? '⚠  Custom pricing applied — YELLOW rows = adjusted prices' : 'Standard pricing — no custom adjustments', '', '', '', '', '', '', ''],
+    ['', '', '', '', '', '', '', ''],
+    ['#', 'Product Name', 'Category', 'Form', 'Strength / Size', 'Unit Price', 'Orig Price', 'Pharmacy'],
+    ...allRows.map((r,i)=>[
+      i+1, r.name, r.cat, r.form, r.strength, r.price,
+      r.modified ? r.origPrice : '', r.pharmacy
+    ]),
+  ];
+
+  const wsM = XLSX.utils.aoa_to_sheet(masterAoa);
+  wsM['!cols']=[{wch:5},{wch:44},{wch:16},{wch:14},{wch:26},{wch:12},{wch:12},{wch:18}];
+  wsM['!freeze']={xSplit:0,ySplit:5};
+
+  // Apply styles using SheetJS s property — fill IS written when cellStyles:true
+  // Style header rows
+  for(let c=0;c<8;c++){
+    const refs=['A1','A2','A3','A4'].map((_,r)=>XLSX.utils.encode_cell({r,c}));
+    // title
+    if(wsM[XLSX.utils.encode_cell({r:0,c})])
+      wsM[XLSX.utils.encode_cell({r:0,c})].s={font:{bold:true,sz:c===0?14:9,color:{rgb:'F97316'},name:'Calibri'},fill:{patternType:'solid',fgColor:{rgb:'1A1A2E'}},alignment:{wrapText:false}};
+    if(wsM[XLSX.utils.encode_cell({r:1,c})])
+      wsM[XLSX.utils.encode_cell({r:1,c})].s={font:{italic:true,sz:9,color:{rgb:'888888'},name:'Calibri'},fill:{patternType:'solid',fgColor:{rgb:'1A1A2E'}}};
+    if(wsM[XLSX.utils.encode_cell({r:2,c})])
+      wsM[XLSX.utils.encode_cell({r:2,c})].s={font:{bold:hasCustomPrices,sz:9,color:{rgb:hasCustomPrices?'FFD700':'888888'},name:'Calibri'},fill:{patternType:'solid',fgColor:{rgb:hasCustomPrices?'2D2500':'1A1A2E'}}};
+  }
+  // column header row (row index 4)
+  for(let c=0;c<8;c++){
+    const ref=XLSX.utils.encode_cell({r:4,c});
+    if(wsM[ref]) wsM[ref].s={font:{bold:true,sz:10,color:{rgb:'FFFFFF'},name:'Calibri'},fill:{patternType:'solid',fgColor:{rgb:'111827'}},border:{bottom:{style:'medium',color:{rgb:'F97316'}}},alignment:{horizontal:'left',vertical:'center'}};
+  }
+  // Data rows
+  const mrng=XLSX.utils.decode_range(wsM['!ref']||'A1');
+  for(let r=5;r<=mrng.e.r;r++){
+    const row=allRows[r-5];
+    const isMod=row&&row.modified;
+    const altBg=r%2===0?'0D1117':'111827';
+    // Yellow highlight for modified rows — bright so it works in light-mode Excel too
+    const rowBg=isMod?'FFF9C4':altBg; // bright yellow on modified
+    for(let c=0;c<=7;c++){
+      const ref=XLSX.utils.encode_cell({r,c});
+      if(!wsM[ref]) continue;
+      let fontColor='CCCCCC',bold=false,fontSize=9;
+      if(c===0){fontColor=isMod?'333333':'666666';}
+      if(c===1){fontColor=isMod?'000000':'FFFFFF';bold=true;}
+      if(c===2){fontColor=isMod?'333333':'94A3B8';}
+      if(c===3||c===4){fontColor=isMod?'333333':'94A3B8';}
+      if(c===5){fontColor=isMod?'B45309':'F97316';bold=true;fontSize=10;} // price — amber when custom
+      if(c===6&&isMod){fontColor='888888';} // orig price — dimmed strikethrough effect
+      if(c===7){const ph=cv.find(p=>p.name===row.pharmacy);fontColor=ph?ph.hex:'94A3B8';bold=true;}
+      wsM[ref].s={
+        font:{name:'Calibri',sz:fontSize,color:{rgb:isMod&&[0,1,2,3,4,5,6,7].includes(c)?fontColor:fontColor},bold},
+        fill:{patternType:'solid',fgColor:{rgb:rowBg}},
+        alignment:{horizontal:c===5||c===6?'right':'left',vertical:'center'},
+        ...(isMod&&c===0?{border:{left:{style:'thick',color:{rgb:'F59E0B'}}}}:{})
+      };
+    }
+  }
+  XLSX.utils.book_append_sheet(wb, wsM, 'All SKUs — Master List');
+
+  // ── PER-PHARMACY SHEETS ───────────────────────────────────────
+  cv.forEach(p=>{
+    const skus=getSKUs(p.id);
+    const pharmAoa=[
+      [`${p.name} — ${name} Formulary`,'','','',''],
+      [`BoomRx · Internal Only · Generated ${date}`,'','','',''],
+      ['','','','',''],
+      ['#','Product Name','Category','Form · Strength','Unit Price'],
+      ...skus.map((s,idx)=>[
+        idx+1, s.name, s.cat,
+        `${s.form} · ${s.strength}`,
+        getPrice(p.id,idx)
+      ]),
+    ];
+
+    const ws=XLSX.utils.aoa_to_sheet(pharmAoa);
+    ws['!cols']=[{wch:5},{wch:46},{wch:16},{wch:32},{wch:14}];
+    ws['!freeze']={xSplit:0,ySplit:4};
+
+    // Title
+    for(let c=0;c<5;c++){
+      if(ws[XLSX.utils.encode_cell({r:0,c})])
+        ws[XLSX.utils.encode_cell({r:0,c})].s={font:{bold:c===0,sz:c===0?13:9,color:{rgb:p.hex},name:'Calibri'},fill:{patternType:'solid',fgColor:{rgb:'111827'}}};
+      if(ws[XLSX.utils.encode_cell({r:1,c})])
+        ws[XLSX.utils.encode_cell({r:1,c})].s={font:{italic:true,sz:9,color:{rgb:'666666'},name:'Calibri'},fill:{patternType:'solid',fgColor:{rgb:'111827'}}};
+    }
+    // Column headers (row 3)
+    for(let c=0;c<5;c++){
+      const ref=XLSX.utils.encode_cell({r:3,c});
+      if(ws[ref]) ws[ref].s={font:{bold:true,sz:10,color:{rgb:'FFFFFF'},name:'Calibri'},fill:{patternType:'solid',fgColor:{rgb:'111827'}},border:{bottom:{style:'medium',color:{rgb:p.hex}}},alignment:{horizontal:c===4?'right':'left'}};
+    }
+    // Data rows
+    const rng=XLSX.utils.decode_range(ws['!ref']||'A1');
+    for(let r=4;r<=rng.e.r;r++){
+      const idx=r-4;
+      const isMod=hasCustom(p.id,idx);
+      const altBg=r%2===0?'0D1117':'111827';
+      const rowBg=isMod?'FFF9C4':altBg; // bright yellow
+      for(let c=0;c<=4;c++){
+        const ref=XLSX.utils.encode_cell({r,c});
+        if(!ws[ref]) continue;
+        let fontColor='CCCCCC',bold=false,fontSize=9;
+        if(c===0)fontColor=isMod?'333333':'666666';
+        if(c===1){fontColor=isMod?'000000':'FFFFFF';bold=true;}
+        if(c===2)fontColor=isMod?'555555':'94A3B8';
+        if(c===3)fontColor=isMod?'555555':'94A3B8';
+        if(c===4){fontColor=isMod?'B45309':'F97316';bold=true;fontSize=10;}
+        ws[ref].s={
+          font:{name:'Calibri',sz:fontSize,color:{rgb:fontColor},bold},
+          fill:{patternType:'solid',fgColor:{rgb:rowBg}},
+          alignment:{horizontal:c===4?'right':'left',vertical:'center'},
+          ...(isMod&&c===0?{border:{left:{style:'thick',color:{rgb:'F59E0B'}}}}:{})
+        };
+      }
+    }
+    XLSX.utils.book_append_sheet(wb, ws, p.name.substring(0,31));
+  });
+
+  XLSX.writeFile(wb, `BoomRx_${name.replace(/\s+/g,'_')}_Formulary.xlsx`, {bookType:'xlsx', type:'binary', cellStyles:true});
+
+  // ★ REVERT: clear custom prices after export so next lookup is fresh
+  clearCustomPrices();
+  exitEditMode();
+}
+
+// ─── AI PANEL ─────────────────────────────────────────────────────────────
+function openAI(){document.getElementById('ai-panel').classList.add('open');}
+function closeAI(){document.getElementById('ai-panel').classList.remove('open');}
+function fillPrompt(text){document.getElementById('ai-input').value=text;document.getElementById('ai-input').focus();}
+
+function handleAIKey(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendAI();}}
+
+function buildSKUSummary(){
+  if(!cST) return '';
+  const cv=getCov(cST);
+  const lines=[];
+  cv.forEach(p=>{
+    getSKUs(p.id).forEach((s,idx)=>{
+      lines.push(`${p.name}|${idx}|${s.name}|${s.cat}|${s.price}`);
+    });
+  });
+  return lines.join('\n');
+}
+
+// ─── LICENSE DATABASE ─────────────────────────────────────────────────────
+// Structure: LICENSE_DB[pharmId][stateAbbr] = { num, type, exp, notes }
+// Fill in real license numbers as you get them — null = licensed but number TBD
+const LICENSE_DB = {
+  americas: {
+    AL:{num:null,type:'503A',exp:null,notes:''},
+    AK:{num:null,type:'503A',exp:null,notes:''},
+    AZ:{num:null,type:'503A',exp:null,notes:''},
+    CA:{num:null,type:'503A',exp:null,notes:''},
+    CO:{num:null,type:'503A',exp:null,notes:''},
+    CT:{num:null,type:'503A',exp:null,notes:''},
+    DE:{num:null,type:'503A',exp:null,notes:''},
+    FL:{num:null,type:'503A',exp:null,notes:''},
+    GA:{num:null,type:'503A',exp:null,notes:''},
+    ID:{num:null,type:'503A',exp:null,notes:''},
+    IL:{num:null,type:'503A',exp:null,notes:''},
+    IN:{num:null,type:'503A',exp:null,notes:''},
+    IA:{num:null,type:'503A',exp:null,notes:''},
+    KS:{num:null,type:'503A',exp:null,notes:''},
+    KY:{num:null,type:'503A',exp:null,notes:''},
+    LA:{num:null,type:'503A',exp:null,notes:''},
+    ME:{num:null,type:'503A',exp:null,notes:''},
+    MD:{num:null,type:'503A',exp:null,notes:''},
+    MA:{num:null,type:'503A',exp:null,notes:''},
+    MI:{num:null,type:'503A',exp:null,notes:''},
+    MN:{num:null,type:'503A',exp:null,notes:''},
+    MO:{num:null,type:'503A',exp:null,notes:''},
+    MT:{num:null,type:'503A',exp:null,notes:''},
+    NE:{num:null,type:'503A',exp:null,notes:''},
+    NV:{num:null,type:'503A',exp:null,notes:''},
+    NH:{num:null,type:'503A',exp:null,notes:''},
+    NM:{num:null,type:'503A',exp:null,notes:''},
+    NY:{num:null,type:'503A',exp:null,notes:''},
+    NC:{num:null,type:'503A',exp:null,notes:''},
+    ND:{num:null,type:'503A',exp:null,notes:''},
+    OH:{num:null,type:'503A',exp:null,notes:''},
+    OK:{num:null,type:'503A',exp:null,notes:''},
+    OR:{num:null,type:'503A',exp:null,notes:''},
+    PA:{num:null,type:'503A',exp:null,notes:''},
+    RI:{num:null,type:'503A',exp:null,notes:''},
+    SC:{num:null,type:'503A',exp:null,notes:''},
+    SD:{num:null,type:'503A',exp:null,notes:''},
+    TN:{num:null,type:'503A',exp:null,notes:''},
+    TX:{num:null,type:'503A',exp:null,notes:''},
+    UT:{num:null,type:'503A',exp:null,notes:''},
+    VT:{num:null,type:'503A',exp:null,notes:''},
+    VA:{num:null,type:'503A',exp:null,notes:''},
+    WA:{num:null,type:'503A',exp:null,notes:''},
+    WI:{num:null,type:'503A',exp:null,notes:''},
+    WY:{num:null,type:'503A',exp:null,notes:''},
+    WV:{num:null,type:'503A',exp:null,notes:''},
+  },
+  vios: {
+    AL:{num:null,type:'503A',exp:null,notes:''},
+    AK:{num:null,type:'503A',exp:null,notes:''},
+    AZ:{num:null,type:'503A',exp:null,notes:''},
+    AR:{num:null,type:'503A',exp:null,notes:''},
+    CO:{num:null,type:'503A',exp:null,notes:''},
+    CT:{num:null,type:'503A',exp:null,notes:''},
+    DE:{num:null,type:'503A',exp:null,notes:''},
+    FL:{num:null,type:'503A',exp:null,notes:''},
+    GA:{num:null,type:'503A',exp:null,notes:''},
+    HI:{num:null,type:'503A',exp:null,notes:''},
+    ID:{num:null,type:'503A',exp:null,notes:''},
+    IL:{num:null,type:'503A',exp:null,notes:''},
+    IN:{num:null,type:'503A',exp:null,notes:''},
+    IA:{num:null,type:'503A',exp:null,notes:''},
+    KS:{num:null,type:'503A',exp:null,notes:''},
+    KY:{num:null,type:'503A',exp:null,notes:''},
+    LA:{num:null,type:'503A',exp:null,notes:''},
+    ME:{num:null,type:'503A',exp:null,notes:''},
+    MD:{num:null,type:'503A',exp:null,notes:''},
+    MA:{num:null,type:'503A',exp:null,notes:''},
+    MI:{num:null,type:'503A',exp:null,notes:''},
+    MN:{num:null,type:'503A',exp:null,notes:''},
+    MO:{num:null,type:'503A',exp:null,notes:''},
+    MT:{num:null,type:'503A',exp:null,notes:''},
+    NE:{num:null,type:'503A',exp:null,notes:''},
+    NV:{num:null,type:'503A',exp:null,notes:''},
+    NH:{num:null,type:'503A',exp:null,notes:''},
+    NJ:{num:null,type:'503A',exp:null,notes:''},
+    NM:{num:null,type:'503A',exp:null,notes:''},
+    NY:{num:null,type:'503A',exp:null,notes:''},
+    NC:{num:null,type:'503A',exp:null,notes:''},
+    ND:{num:null,type:'503A',exp:null,notes:''},
+    OH:{num:null,type:'503A',exp:null,notes:''},
+    OK:{num:null,type:'503A',exp:null,notes:''},
+    OR:{num:null,type:'503A',exp:null,notes:''},
+    PA:{num:null,type:'503A',exp:null,notes:''},
+    RI:{num:null,type:'503A',exp:null,notes:''},
+    SC:{num:null,type:'503A',exp:null,notes:''},
+    SD:{num:null,type:'503A',exp:null,notes:''},
+    TN:{num:null,type:'503A',exp:null,notes:''},
+    TX:{num:null,type:'503A',exp:null,notes:''},
+    UT:{num:null,type:'503A',exp:null,notes:''},
+    VT:{num:null,type:'503A',exp:null,notes:''},
+    VA:{num:null,type:'503A',exp:null,notes:''},
+    WA:{num:null,type:'503A',exp:null,notes:''},
+    WI:{num:null,type:'503A',exp:null,notes:''},
+    WY:{num:null,type:'503A',exp:null,notes:''},
+    WV:{num:null,type:'503A',exp:null,notes:''},
+  },
+  emerald: {
+    AK:{num:null,type:'503A',exp:null,notes:''},
+    AZ:{num:null,type:'503A',exp:null,notes:''},
+    CO:{num:null,type:'503A',exp:null,notes:''},
+    CT:{num:null,type:'503A',exp:null,notes:''},
+    DE:{num:null,type:'503A',exp:null,notes:''},
+    FL:{num:null,type:'503A',exp:null,notes:''},
+    GA:{num:null,type:'503A',exp:null,notes:''},
+    HI:{num:null,type:'503A',exp:null,notes:''},
+    ID:{num:null,type:'503A',exp:null,notes:''},
+    IL:{num:null,type:'503A',exp:null,notes:''},
+    IA:{num:null,type:'503A',exp:null,notes:''},
+    ME:{num:null,type:'503A',exp:null,notes:''},
+    MD:{num:null,type:'503A',exp:null,notes:''},
+    MO:{num:null,type:'503A',exp:null,notes:''},
+    MT:{num:null,type:'503A',exp:null,notes:''},
+    NE:{num:null,type:'503A',exp:null,notes:''},
+    NH:{num:null,type:'503A',exp:null,notes:''},
+    NJ:{num:null,type:'503A',exp:null,notes:''},
+    NM:{num:null,type:'503A',exp:null,notes:''},
+    NY:{num:null,type:'503A',exp:null,notes:''},
+    NC:{num:null,type:'503A',exp:null,notes:''},
+    ND:{num:null,type:'503A',exp:null,notes:''},
+    OH:{num:null,type:'503A',exp:null,notes:''},
+    OK:{num:null,type:'503A',exp:null,notes:''},
+    PA:{num:null,type:'503A',exp:null,notes:''},
+    RI:{num:null,type:'503A',exp:null,notes:''},
+    SD:{num:null,type:'503A',exp:null,notes:''},
+    UT:{num:null,type:'503A',exp:null,notes:''},
+    VT:{num:null,type:'503A',exp:null,notes:''},
+    WA:{num:null,type:'503A',exp:null,notes:''},
+    WV:{num:null,type:'503A',exp:null,notes:''},
+    WI:{num:null,type:'503A',exp:null,notes:''},
+    WY:{num:null,type:'503A',exp:null,notes:''},
+  },
+  riteaway: {
+    AZ:{num:null,type:'503A',exp:null,notes:''},
+    CO:{num:null,type:'503A',exp:null,notes:''},
+    CT:{num:null,type:'503A',exp:null,notes:''},
+    DE:{num:null,type:'503A',exp:null,notes:''},
+    FL:{num:null,type:'503A',exp:null,notes:''},
+    GA:{num:null,type:'503A',exp:null,notes:''},
+    ID:{num:null,type:'503A',exp:null,notes:''},
+    IL:{num:null,type:'503A',exp:null,notes:''},
+    IN:{num:null,type:'503A',exp:null,notes:''},
+    IA:{num:null,type:'503A',exp:null,notes:''},
+    KS:{num:null,type:'503A',exp:null,notes:''},
+    MA:{num:null,type:'503A',exp:null,notes:''},
+    ME:{num:null,type:'503A',exp:null,notes:''},
+    MN:{num:null,type:'503A',exp:null,notes:''},
+    MO:{num:null,type:'503A',exp:null,notes:''},
+    MT:{num:null,type:'503A',exp:null,notes:''},
+    NM:{num:null,type:'503A',exp:null,notes:''},
+    NY:{num:null,type:'503A',exp:null,notes:''},
+    OH:{num:null,type:'503A',exp:null,notes:''},
+    OK:{num:null,type:'503A',exp:null,notes:''},
+    OR:{num:null,type:'503A',exp:null,notes:''},
+    PA:{num:null,type:'503A',exp:null,notes:''},
+    RI:{num:null,type:'503A',exp:null,notes:''},
+    SD:{num:null,type:'503A',exp:null,notes:''},
+    TX:{num:null,type:'503A',exp:null,notes:''},
+    UT:{num:null,type:'503A',exp:null,notes:''},
+    VT:{num:null,type:'503A',exp:null,notes:''},
+    WI:{num:null,type:'503A',exp:null,notes:''},
+    WV:{num:null,type:'503A',exp:null,notes:''},
+    WY:{num:null,type:'503A',exp:null,notes:''},
+  },
+  prorx: {},
+  boudrx: {
+    MD:{num:null,type:'503A',exp:null,notes:''},
+    WA:{num:null,type:'503A',exp:null,notes:''},
+    AK:{num:null,type:'503A',exp:null,notes:''},
+    GA:{num:null,type:'503A',exp:null,notes:''},
+    KS:{num:null,type:'503A',exp:null,notes:''},
+    KY:{num:null,type:'503A',exp:null,notes:''},
+    MN:{num:null,type:'503A',exp:null,notes:''},
+    OK:{num:null,type:'503A',exp:null,notes:''},
+    SC:{num:null,type:'503A',exp:null,notes:''},
+    SD:{num:null,type:'503A',exp:null,notes:''},
+    WV:{num:null,type:'503A',exp:null,notes:''},
+    WY:{num:null,type:'503A',exp:null,notes:''},
+    NE:{num:null,type:'503A',exp:null,notes:''},
+    TX:{num:null,type:'503A',exp:null,notes:''},
+    DE:{num:null,type:'503A',exp:null,notes:''},
+    RI:{num:null,type:'503A',exp:null,notes:''},
+    NH:{num:null,type:'503A',exp:null,notes:''},
+    AZ:{num:null,type:'503A',exp:null,notes:''},
+    CO:{num:null,type:'503A',exp:null,notes:''},
+    NV:{num:null,type:'503A',exp:null,notes:''},
+    MT:{num:null,type:'503A',exp:null,notes:''},
+    AL:{num:null,type:'503A',exp:null,notes:''},
+    ID:{num:null,type:'503A',exp:null,notes:''},
+    IA:{num:null,type:'503A',exp:null,notes:''},
+    LA:{num:null,type:'503A',exp:null,notes:''},
+    ME:{num:null,type:'503A',exp:null,notes:''},
+    MA:{num:null,type:'503A',exp:null,notes:''},
+    NM:{num:null,type:'503A',exp:null,notes:''},
+    NC:{num:null,type:'503A',exp:null,notes:''},
+    FL:{num:null,type:'503A',exp:null,notes:''},
+    CA:{num:null,type:'503A',exp:null,notes:''},
+    OH:{num:null,type:'503A',exp:null,notes:''},
+    OR:{num:null,type:'503A',exp:null,notes:''},
+    MI:{num:null,type:'503A',exp:null,notes:''},
+    ND:{num:null,type:'503A',exp:null,notes:''},
+    VT:{num:null,type:'503A',exp:null,notes:''},
+    PA:{num:null,type:'503A',exp:null,notes:''},
+    TN:{num:null,type:'503A',exp:null,notes:''},
+    NY:{num:null,type:'503A',exp:null,notes:''},
+    UT:{num:null,type:'503A',exp:null,notes:''},
+    MO:{num:null,type:'503A',exp:null,notes:''},
+    IN:{num:null,type:'503A',exp:null,notes:''},
+    MS:{num:null,type:'503A',exp:null,notes:''},
+    IL:{num:null,type:'503A',exp:null,notes:''},
+    WI:{num:null,type:'503A',exp:null,notes:''},
+  }
+};
+
+// Build a license context string for the AI
+function buildLicenseContext(stateAbbr){
+  const stateName = AN[stateAbbr]||stateAbbr;
+  const src = licenseSheetLoaded ? 'live from Google Sheet' : 'built-in data';
+  const lines = [`LICENSE DATA FOR ${stateName} (${stateAbbr}) — ${src}`,''];
+  PH.forEach(p=>{
+    const entry = LICENSE_DB[p.id]&&LICENSE_DB[p.id][stateAbbr];
+    if(entry){
+      // entry is now an array of license objects
+      const lics = Array.isArray(entry) ? entry : [entry];
+      lines.push(`${p.name}: LICENSED`);
+      lics.forEach(lic=>{
+        const num  = lic.num  || 'Not yet entered';
+        const exp  = lic.exp  || 'Not yet entered';
+        const type = lic.type || '503A';
+        lines.push(`  License #: ${num} (${type}) — Expires: ${exp}${expiryWarning(exp)}`);
+        if(lic.notes) lines.push(`  Notes: ${lic.notes}`);
+      });
+    } else {
+      lines.push(`${p.name}: NOT LICENSED in ${stateAbbr}`);
+    }
+    lines.push('');
+  });
+  return lines.join('\n');
+}
+
+function parseExpiry(str){
+  if(!str) return null;
+  // Handle M/D/YY, M/D/YYYY, YYYY-MM-DD
+  const s = str.trim();
+  if(!s) return null;
+  const d = new Date(s);
+  if(!isNaN(d)) return d;
+  // Try M/D/YY
+  const parts = s.split('/');
+  if(parts.length===3){
+    let [m,d2,y]=parts;
+    if(y.length===2) y='20'+y;
+    return new Date(`${y}-${m.padStart(2,'0')}-${d2.padStart(2,'0')}`);
+  }
+  return null;
+}
+
+function expiryWarning(expStr){
+  const d = parseExpiry(expStr);
+  if(!d) return '';
+  const days = Math.ceil((d-new Date())/(1000*60*60*24));
+  if(days < 0)  return ' ⚠ EXPIRED';
+  if(days < 60) return ` ⚠ EXPIRES SOON (${days} days)`;
+  return '';
+}
+function isLicenseQuery(prompt){
+  const kw = ['licens','permit','number','expir','type','503','certif','board','DEA',
+               'register','auth','approv','allowed','ship','active','status','credential'];
+  const lower = prompt.toLowerCase();
+  return kw.some(k=>lower.includes(k));
+}
+
+async function sendAI(){
+  const input=document.getElementById('ai-input');
+  const prompt=input.value.trim();
+  if(!prompt) return;
+  if(!ANTHROPIC_KEY || ANTHROPIC_KEY==='YOUR_ANTHROPIC_KEY_HERE'){
+    addMsg('ai','⚠ No API key set. Open the HTML file, find ANTHROPIC_KEY near the top, and paste your key from console.anthropic.com.');
+    return;
+  }
+
+  input.value='';
+  addMsg('user',prompt);
+
+  const stateName=AN[cST]||cST;
+  const licenseMode = isLicenseQuery(prompt);
+
+  const loadId=addMsg('ai', licenseMode ? 'Looking up license info…' : 'Calculating new prices…', true);
+
+  const licenseContext = buildLicenseContext(cST);
+  const skuSummary = buildSKUSummary();
+
+  const systemPrompt = licenseMode
+  ? `You are a pharmacy licensing assistant for BoomRx reps. You have access to license data for all 5 BoomRx partner pharmacies.
+
+When asked about licenses, provide clear, direct answers. If a license number shows "TBD — not yet entered", say it's on file but the number hasn't been entered into the system yet and they should contact their BoomRx account manager.
+
+Format your response cleanly — use the pharmacy name as a header, then license details. Be concise. If asked which pharmacies are licensed in a state, list them clearly. If asked for a specific pharmacy's license, give just that one.
+
+Never make up license numbers. If data shows TBD, say TBD.`
+
+  : `You are a pharmacy pricing assistant for BoomRx. Apply pricing rules to the formulary.
+
+Return ONLY a JSON array of changes: [{"pharmId":"...","idx":number,"newPrice":"$XX.XX"}]
+pharmId values: americas, vios, emerald, riteaway, boudrx
+- Strip $, calculate, round to 2 decimals, minimum $0.01
+- Percentage off: price*(1-pct/100)
+- Flat off: price-amount
+- Only include SKUs where price changes
+- Return [] if no matches
+Return ONLY valid JSON, no markdown, no explanation.`;
+
+  const userMsg = licenseMode
+    ? `${licenseContext}\n\nRep question: ${prompt}`
+    : `State: ${stateName}\nRule: ${prompt}\n\nSKUs:\n${skuSummary}`;
+
+  try{
+    // API key for internal BoomRx tool — reps only, not public
+    const resp=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json',
+        'x-api-key': ANTHROPIC_KEY,
+        'anthropic-version':'2023-06-01',
+        'anthropic-dangerous-direct-browser-access':'true'
+      },
+      body:JSON.stringify({
+        model:'claude-sonnet-4-5',
+        max_tokens:1000,
+        system:systemPrompt,
+        messages:[{role:'user',content:userMsg}]
+      })
+    });
+    const data=await resp.json();
+    const raw=(data.content&&data.content[0]&&data.content[0].text)||'';
+    removeMsg(loadId);
+
+    if(licenseMode){
+      // Plain text response — display directly
+      addMsg('ai', raw);
+      return;
+    }
+
+    // Pricing mode — parse JSON
+    let changes;
+    try{
+      const cleaned=raw.replace(/```json?/g,'').replace(/```/g,'').trim();
+      changes=JSON.parse(cleaned);
+    }catch(e){
+      addMsg('ai','Sorry, I had trouble parsing that. Try rephrasing — e.g. "10% off peptides" or "$5 off weight loss".');
+      return;
+    }
+
+    if(!Array.isArray(changes)||changes.length===0){
+      addMsg('ai',`No SKUs matched that rule for ${stateName}.`);
+      return;
+    }
+
+    changes.forEach(c=>{
+      if(c.pharmId&&c.idx!==undefined&&c.newPrice) setPrice(c.pharmId,c.idx,c.newPrice);
+    });
+
+    const catCounts={};
+    changes.forEach(c=>{
+      const s=(getSKUs(c.pharmId)||[])[c.idx];
+      if(s) catCounts[s.cat]=(catCounts[s.cat]||0)+1;
+    });
+    const summary=Object.entries(catCounts).map(([k,v])=>`${v} ${k}`).join(', ');
+
+    if(!isEditing) enterEditMode();
+    else renderSKUs(cST);
+
+    const msgEl=addMsg('ai',`✓ Applied to ${changes.length} SKUs (${summary}).\n\nPrices shown in green — export when ready. Prices revert after export.`);
+    const btnRow=document.createElement('div');btnRow.style.cssText='display:flex;gap:8px;margin-top:8px';
+    const revertBtn=document.createElement('button');
+    revertBtn.className='apply-btn';
+    revertBtn.style.cssText='background:rgba(239,68,68,0.15);border-color:rgba(239,68,68,0.4);color:#ef4444';
+    revertBtn.innerHTML='↩ Revert prices';
+    revertBtn.onclick=()=>{exitEditMode();closeAI();};
+    btnRow.appendChild(revertBtn);
+    msgEl.querySelector('.msg-bubble').appendChild(btnRow);
+
+  }catch(err){
+    removeMsg(loadId);
+    addMsg('ai','Network error — check your connection and try again.');
+  }
+}
+
+let msgCounter=0;
+function addMsg(role,text,loading=false){
+  const id='msg-'+(++msgCounter);
+  const msgs=document.getElementById('ai-messages');
+  const div=document.createElement('div');div.className=`msg ${role}`;div.id=id;
+  const bubble=document.createElement('div');bubble.className='msg-bubble'+(loading?' loading':'');
+  bubble.style.whiteSpace='pre-wrap';bubble.innerHTML=text.replace(/\n/g,'<br>');
+  div.appendChild(bubble);msgs.appendChild(div);
+  msgs.scrollTop=msgs.scrollHeight;
+  return div;
+}
+function removeMsg(el){if(el&&el.parentNode)el.parentNode.removeChild(el);}
+
+// ─── PRODUCT SEARCH ───────────────────────────────────────────────────────
+let prodSearchTimer = null;
+
+function onProdSearch(val){
+  const clear = document.getElementById('prod-search-clear');
+  clear.style.display = val ? 'block' : 'none';
+  clearTimeout(prodSearchTimer);
+  if(!val.trim()){ closeProdPanel(); return; }
+  prodSearchTimer = setTimeout(()=>runProdSearch(val.trim()), 300);
+}
+
+function onProdSearchKey(e){
+  if(e.key==='Escape') clearProdSearch();
+}
+
+function clearProdSearch(){
+  document.getElementById('prod-search').value='';
+  document.getElementById('prod-search-clear').style.display='none';
+  closeProdPanel();
+}
+
+function closeProdPanel(){
+  document.getElementById('prod-panel').style.display='none';
+}
+
+function runProdSearch(query){
+  const q = query.toLowerCase();
+  const panel = document.getElementById('prod-panel');
+  const body  = document.getElementById('prod-panel-body');
+  const title = document.getElementById('prod-panel-title');
+
+  // Find all matching SKUs across all pharmacies/states
+  // Group by product name first, then show states
+  const byProduct = {};
+
+  PH.forEach(p=>{
+    getSKUs(p.id).forEach((sku, idx)=>{
+      if(!sku.name.toLowerCase().includes(q) && !sku.cat.toLowerCase().includes(q)) return;
+      const key = sku.name + '||' + sku.form + '||' + sku.strength;
+      if(!byProduct[key]) byProduct[key] = {sku, pharmEntries:[]};
+
+      // Find all states this pharmacy+sku combo is available in
+      Object.keys(AN).forEach(abbr=>{
+        if(!COV[p.id].has(abbr)) return;
+        byProduct[key].pharmEntries.push({
+          abbr, stateName:AN[abbr],
+          pharmId:p.id, pharmName:p.name, pharmColor:p.color,
+          price: getPrice(p.id, idx), idx
+        });
+      });
+    });
+  });
+
+  const products = Object.values(byProduct);
+  const totalStates = new Set(products.flatMap(p=>p.pharmEntries.map(e=>e.abbr))).size;
+
+  title.textContent = products.length
+    ? `"${query}" — ${products.length} product${products.length!==1?'s':''} across ${totalStates} states`
+    : `No results for "${query}"`;
+
+  body.innerHTML = '';
+  panel.style.display = 'flex';
+
+  if(!products.length){
+    body.innerHTML = `<div class="prod-no-results">No products matching "<strong>${query}</strong>" found.</div>`;
+    return;
+  }
+
+  products.forEach(({sku, pharmEntries})=>{
+    const card = document.createElement('div');
+    card.className = 'prod-state-card';
+    const cc = CC[sku.cat]||['rgba(148,163,184,0.12)','#94a3b8'];
+
+    // Header — product name
+    const hdr = document.createElement('div');
+    hdr.className = 'prod-state-hdr';
+    hdr.style.cursor = 'default';
+    hdr.innerHTML = `
+      <span style="font-size:11px;background:${cc[0]};color:${cc[1]};padding:2px 7px;border-radius:4px">${sku.cat}</span>
+      <span style="font-weight:700;color:var(--text)">${sku.name}</span>
+      <span style="color:var(--text3);font-size:11px;margin-left:4px">${sku.form} ${sku.strength}</span>
+      <span style="margin-left:auto;color:var(--text3);font-size:10px">${new Set(pharmEntries.map(e=>e.abbr)).size} states</span>`;
+    card.appendChild(hdr);
+
+    // Group entries by pharmacy
+    const byPharm = {};
+    pharmEntries.forEach(e=>{
+      if(!byPharm[e.pharmId]) byPharm[e.pharmId]={name:e.pharmName,color:e.pharmColor,price:e.price,states:[]};
+      byPharm[e.pharmId].states.push(e.abbr);
+    });
+
+    Object.values(byPharm).forEach(({name,color,price,states})=>{
+      const row = document.createElement('div');
+      row.className = 'prod-pharm-row';
+      // Show first 8 states then +N more
+      const shown = states.slice(0,10).join(', ');
+      const extra = states.length > 10 ? ` +${states.length-10} more` : '';
+      row.innerHTML = `
+        <span class="prod-pharm-dot" style="background:${color}"></span>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:12px;color:var(--text2);font-weight:600">${name}</div>
+          <div style="font-size:10px;color:var(--text3);margin-top:2px">${shown}${extra}</div>
+        </div>
+        <span class="prod-pharm-price">${price}</span>`;
+      card.appendChild(row);
+    });
+
+    body.appendChild(card);
+  });
+}
+
+// ─── PRESCRIBER SUMMARY ───────────────────────────────────────────────────
+function prescriberSummary(){
+  if(!cST){ alert('Select a state first.'); return; }
+  const stateName = AN[cST]||cST;
+  const cv = getCov(cST);
+  if(!cv.length){ alert('No pharmacies licensed in this state.'); return; }
+
+  const today = new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'});
+  let text = `BOOMRX PHARMACY COVERAGE SUMMARY\n`;
+  text += `State: ${stateName}\nGenerated: ${today}\n`;
+  text += `${'─'.repeat(45)}\n\n`;
+
+  cv.forEach(p=>{
+    const lics = LICENSE_DB[p.id]&&LICENSE_DB[p.id][cST];
+    const skus = getSKUs(p.id);
+
+    text += `${p.name.toUpperCase()}\n`;
+
+    if(lics && lics.length){
+      lics.forEach(l=>{
+        const num = l.num || 'On file';
+        const exp = l.exp || 'N/A';
+        const type = l.type || '503A';
+        text += `  License: ${num} (${type}) — Expires ${exp}\n`;
+      });
+    } else {
+      text += `  License: On file\n`;
+    }
+
+    if(skus.length){
+      text += `  Available Products (${skus.length}):\n`;
+      // Group by category
+      const byCat = {};
+      skus.forEach(s=>{ if(!byCat[s.cat]) byCat[s.cat]=[]; byCat[s.cat].push(s); });
+      Object.entries(byCat).forEach(([cat, list])=>{
+        text += `    ${cat}:\n`;
+        list.forEach(s=>{
+          text += `      • ${s.name} — ${s.form} ${s.strength} — ${s.price}\n`;
+        });
+      });
+    }
+    text += '\n';
+  });
+
+  text += `─`.repeat(45)+'\n';
+  text += `For inquiries contact your BoomRx account manager.\n`;
+  text += `This document is for prescriber use only.`;
+
+  // Show modal
+  const modal = document.createElement('div');
+  modal.className = 'summary-modal';
+  modal.innerHTML = `
+    <div class="summary-box">
+      <div class="summary-head">
+        <div class="summary-head-title">📋 Prescriber Summary — ${stateName}</div>
+        <button class="btn-close" onclick="this.closest('.summary-modal').remove()">✕</button>
+      </div>
+      <div class="summary-body">
+        <div class="summary-text" id="summary-text">${text}</div>
+        <button class="summary-copy-btn" onclick="copySummary()">Copy to Clipboard</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+}
+
+function copySummary(){
+  const text = document.getElementById('summary-text').textContent;
+  navigator.clipboard.writeText(text).then(()=>{
+    const btn = document.querySelector('.summary-copy-btn');
+    btn.textContent = '✓ Copied!';
+    btn.style.background = '#22c55e';
+    setTimeout(()=>{ btn.textContent='Copy to Clipboard'; btn.style.background=''; }, 2000);
+  });
+}
+
+// ─── SEARCH ───────────────────────────────────────────────────────────────
+let searchFocusIdx=-1;
+function onSearch(val){
+  const q=val.trim().toLowerCase();
+  const clear=document.getElementById('search-clear');
+  const dd=document.getElementById('search-dropdown');
+  clear.style.display=q?'block':'none';
+  if(!q){dd.classList.remove('open');return;}
+  const matches=Object.entries(AN).filter(([abbr,name])=>
+    name.toLowerCase().includes(q)||abbr.toLowerCase().includes(q)
+  ).slice(0,8);
+  if(!matches.length){dd.classList.remove('open');return;}
+  searchFocusIdx=-1;
+  dd.innerHTML=matches.map(([abbr,name],i)=>{
+    const cv=PH.filter(p=>COV[p.id].has(abbr));
+    const dots=cv.map(p=>`<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${p.color};margin-right:2px"></span>`).join('');
+    return `<div class="search-result" data-abbr="${abbr}" data-idx="${i}" onclick="selectState('${abbr}')">
+      <span class="search-result-abbr">${abbr}</span>
+      <span>${name}</span>
+      <span class="search-result-pharms">${dots}</span>
+    </div>`;
+  }).join('');
+  dd.classList.add('open');
+}
+function onSearchKey(e){
+  const dd=document.getElementById('search-dropdown');
+  const items=dd.querySelectorAll('.search-result');
+  if(!items.length) return;
+  if(e.key==='ArrowDown'){e.preventDefault();searchFocusIdx=Math.min(searchFocusIdx+1,items.length-1);}
+  else if(e.key==='ArrowUp'){e.preventDefault();searchFocusIdx=Math.max(searchFocusIdx-1,0);}
+  else if(e.key==='Enter'){e.preventDefault();if(searchFocusIdx>=0)items[searchFocusIdx].click();else if(items.length)items[0].click();return;}
+  else if(e.key==='Escape'){clearSearch();return;}
+  items.forEach((el,i)=>el.classList.toggle('focused',i===searchFocusIdx));
+}
+function selectState(abbr){
+  clearSearch();
+  aCF='All';
+  renderSheet(abbr);
+  // Flash + zoom to state on map
+  flashState(abbr);
+}
+function clearSearch(){
+  document.getElementById('state-search').value='';
+  document.getElementById('search-clear').style.display='none';
+  document.getElementById('search-dropdown').classList.remove('open');
+  searchFocusIdx=-1;
+}
+// Close dropdown when clicking outside
+document.addEventListener('click',e=>{
+  if(!e.target.closest('.search-wrap')) document.getElementById('search-dropdown').classList.remove('open');
+});
+
+
+// ─── EMBEDDED US STATE PATHS (AlbersUSA 975×610) ─────────────────────────
+// Pre-projected — no CDN, no network needed. Works offline.
+const US_STATE_PATHS = {
+  "01":"M631,419 L648,419 L658,433 L661,462 L654,490 L645,495 L634,493 L614,490 L609,477 L612,449 L619,432Z",
+  "02":"M98,492 L128,473 L160,467 L186,476 L202,492 L191,512 L165,523 L135,521 L107,511Z",
+  "04":"M196,341 L244,342 L259,349 L273,395 L274,433 L244,449 L208,449 L171,432 L168,406 L172,366Z",
+  "05":"M541,350 L616,349 L620,360 L623,390 L602,400 L566,401 L544,384 L540,361Z",
+  "06":"M103,264 L130,253 L154,255 L172,273 L178,310 L175,343 L163,371 L143,394 L121,401 L102,391 L84,357 L77,316 L82,279Z",
+  "08":"M281,271 L382,269 L386,344 L285,345Z",
+  "09":"M796,226 L820,223 L825,243 L806,248 L793,244Z",
+  "10":"M775,262 L787,259 L791,276 L779,281Z",
+  "12":"M649,490 L669,490 L692,498 L717,509 L731,525 L736,543 L719,557 L699,560 L673,554 L655,538 L643,520 L635,502Z",
+  "13":"M649,448 L693,446 L714,449 L725,480 L720,510 L700,520 L680,519 L664,507 L644,490 L634,491 L643,460Z",
+  "15":"M243,539 L263,537 L277,544 L272,557 L251,558 L237,551Z",
+  "16":"M195,153 L242,152 L252,173 L256,214 L245,245 L228,260 L207,264 L193,255 L183,229 L184,193Z",
+  "17":"M557,267 L608,264 L613,293 L608,329 L593,354 L565,355 L551,339 L546,308 L551,277Z",
+  "18":"M608,264 L644,260 L648,292 L643,338 L618,345 L607,329 L613,293Z",
+  "19":"M488,226 L559,223 L564,266 L553,277 L488,279Z",
+  "20":"M383,303 L489,300 L491,338 L385,340Z",
+  "21":"M618,345 L655,341 L686,339 L701,344 L699,361 L671,375 L646,378 L618,375 L602,364 L603,353Z",
+  "22":"M543,415 L589,414 L610,420 L614,449 L600,459 L569,464 L543,454 L529,439 L534,424Z",
+  "23":"M836,146 L858,143 L873,153 L868,178 L852,188 L836,183 L827,168Z",
+  "24":"M745,278 L779,272 L790,277 L788,290 L759,296 L741,290Z",
+  "25":"M806,216 L839,212 L848,223 L834,233 L804,229Z",
+  "26":"M615,191 L643,186 L658,197 L662,223 L646,238 L628,242 L611,234 L602,216Z",
+  "27":"M487,141 L554,138 L559,171 L564,223 L488,226 L477,210 L476,179Z",
+  "28":"M572,394 L603,392 L610,420 L614,449 L589,460 L563,455 L548,439 L553,414 L563,399Z",
+  "29":"M487,300 L549,298 L568,301 L564,353 L549,373 L520,383 L488,378 L478,352 L477,317Z",
+  "30":"M193,121 L341,118 L345,193 L253,196 L241,185 L193,188Z",
+  "31":"M383,256 L489,253 L491,300 L385,303Z",
+  "32":"M129,247 L174,241 L184,267 L184,339 L174,343 L152,343 L122,319 L108,289 L113,258Z",
+  "33":"M818,175 L833,172 L837,191 L834,213 L818,212 L813,195Z",
+  "34":"M782,253 L798,248 L805,266 L797,279 L783,281 L776,266Z",
+  "35":"M254,338 L320,335 L325,431 L253,434 L232,431 L234,394 L254,369Z",
+  "36":"M736,195 L799,188 L801,211 L789,225 L758,235 L736,238 L718,228 L714,212Z",
+  "37":"M698,343 L754,338 L794,335 L808,342 L800,366 L773,373 L742,376 L712,376 L698,365Z",
+  "38":"M383,149 L489,146 L491,194 L385,197Z",
+  "39":"M643,260 L689,255 L700,276 L700,317 L679,335 L652,339 L642,318 L637,287Z",
+  "40":"M383,340 L489,336 L545,335 L549,373 L527,377 L487,378 L383,376Z",
+  "41":"M99,171 L185,166 L191,191 L185,228 L153,243 L128,245 L99,235 L89,213 L89,186Z",
+  "42":"M699,242 L760,236 L775,244 L774,264 L746,274 L719,274 L699,263Z",
+  "44":"M818,229 L830,226 L832,239 L820,242Z",
+  "45":"M698,365 L731,360 L755,365 L760,386 L739,412 L713,417 L693,405 L688,386Z",
+  "46":"M383,197 L489,194 L491,253 L385,256Z",
+  "47":"M603,364 L654,359 L699,357 L714,361 L712,379 L685,388 L648,390 L613,390 L593,382 L593,369Z",
+  "48":"M383,376 L487,378 L531,375 L549,394 L553,414 L543,454 L528,481 L508,502 L487,513 L447,522 L412,512 L392,490 L377,460 L368,430 L369,399 L379,383Z",
+  "49":"M228,262 L284,260 L284,342 L253,345 L228,345 L223,308Z",
+  "50":"M799,185 L815,182 L818,202 L808,212 L796,208 L796,192Z",
+  "51":"M699,298 L747,292 L774,296 L808,292 L807,316 L789,328 L758,335 L728,335 L709,327 L699,317Z",
+  "53":"M99,126 L192,123 L196,149 L185,164 L153,170 L119,170 L99,160Z",
+  "54":"M699,276 L732,271 L749,276 L746,296 L730,312 L709,314 L699,305Z",
+  "55":"M553,171 L610,168 L619,190 L614,233 L588,244 L562,245 L551,231 L545,201Z",
+  "56":"M283,195 L384,192 L386,261 L285,263Z"
+};
+
+// State label override positions (for small/coastal states)
+const LABEL_OV = {
+  'ME':[858,162],'NH':[826,193],'VT':[807,196],'MA':[830,222],'RI':[824,234],
+  'CT':[808,238],'NJ':[789,264],'DE':[782,271],'MD':[760,290],'HI':[258,547],'AK':[149,494]
+};
+
+// ─── MAP RENDER ──────────────────────────────────────────────────────────────
+fetchFormulary();
+fetchLicenseSheet(); // loads license data from Google Sheet if URL is set
+
+const svg = d3.select('#msw').append('svg')
+  .attr('viewBox','0 0 975 610')
+  .attr('width','100%').attr('height','100%')
+  .style('cursor','grab')
+  .style('position','absolute')
+  .style('inset','0');
+svg.append('defs');
+const mapG = svg.append('g');
+
+const zoom = d3.zoom().scaleExtent([1,12]).on('zoom', event => {
+  mapG.attr('transform', event.transform);
+  const k = event.transform.k;
+  mapG.selectAll('.sp').attr('stroke-width', 0.8/k);
+  mapG.selectAll('.slabel').style('font-size', function(){
+    return (parseFloat(this.dataset.fs||7)/k*Math.min(k,3))+'px';
+  });
+  svg.style('cursor', (event.sourceEvent&&event.sourceEvent.buttons)?'grabbing':'grab');
+});
+svg.call(zoom).on('dblclick.zoom',null);
+
+function zoomIn(){svg.transition().duration(300).call(zoom.scaleBy,1.8);}
+function zoomOut(){svg.transition().duration(300).call(zoom.scaleBy,1/1.8);}
+function zoomReset(){svg.transition().duration(400).call(zoom.transform,d3.zoomIdentity);}
+
+function flashState(abbr){
+  const node=mapG.selectAll('.sp').filter(function(){return this.dataset.abbr===abbr;}).node();
+  if(!node) return;
+  const b=node.getBBox();
+  const cx=b.x+b.width/2, cy=b.y+b.height/2;
+  const k=Math.min(12,Math.max(2,Math.min(975*0.45/b.width,610*0.45/b.height)));
+  const tx=975/2-k*cx, ty=610/2-k*cy;
+  svg.transition().duration(600).call(zoom.transform,d3.zoomIdentity.translate(tx,ty).scale(k));
+  const sel=d3.select(node);
+  sel.attr('stroke','#f97316').attr('stroke-width',3/k);
+  setTimeout(()=>sel.attr('stroke','#080c14').attr('stroke-width',0.8/k),1400);
+}
+
+function updateMapFills(){
+  buildPatterns();
+  mapG.selectAll('.sp').attr('fill',function(){
+    const a=this.dataset.abbr; return a?getFill(a):'#1c2333';
+  });
+}
+
+function addStateEvents(sel, abbr){
+  sel.on('click',function(event){
+    if(event.defaultPrevented) return;
+    aCF='All'; renderSheet(abbr);
+  })
+  .on('touchend',function(ev){ev.preventDefault();aCF='All';renderSheet(abbr);})
+  .on('mouseover',function(){
+    const k=d3.zoomTransform(svg.node()).k;
+    d3.select(this).attr('stroke','rgba(249,115,22,0.9)').attr('stroke-width',2.5/k);
+  })
+  .on('mouseout',function(){
+    const k=d3.zoomTransform(svg.node()).k;
+    d3.select(this).attr('stroke','#080c14').attr('stroke-width',0.8/k);
+  });
+}
+
+// Try loading real TopoJSON (accurate shapes), fall back to embedded polygons
+const TOPO_URLS = [
+  'https://cdn.jsdelivr.net/npm/us-atlas@3/states-albers-10m.json',
+  'https://unpkg.com/us-atlas@3/states-albers-10m.json',
+];
+
+async function tryLoadTopo(){
+  for(const url of TOPO_URLS){
+    try{
+      const r=await fetch(url,{cache:'force-cache'});
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      const data=await r.json();
+      console.log('[BoomRx] TopoJSON loaded from',url);
+      return data;
+    }catch(e){console.warn('[BoomRx] Topo failed:',url,e.message);}
+  }
+  return null;
+}
+
+function renderFromEmbedded(){
+  console.log('[BoomRx] Using embedded state paths');
+  buildPatterns();
+  Object.entries(US_STATE_PATHS).forEach(([fips, pathD])=>{
+    const abbr=FIPS[fips.padStart(2,'0')]; if(!abbr) return;
+    addStateEvents(
+      mapG.append('path').attr('class','sp').attr('d',pathD)
+        .attr('fill',getFill(abbr)).attr('stroke','#080c14').attr('stroke-width',0.8)
+        .attr('data-abbr',abbr).style('cursor','pointer'),
+      abbr
+    );
+  });
+  addLabelsFromTable();
+  hideSpinner();
+}
+
+function renderFromTopo(us){
+  console.log('[BoomRx] Rendering from TopoJSON');
+  const pg = d3.geoPath(); // pre-projected
+  const feats = topojson.feature(us, us.objects.states).features;
+  buildPatterns();
+  feats.forEach(d=>{
+    const abbr=FIPS[String(d.id).padStart(2,'0')]; if(!abbr) return;
+    addStateEvents(
+      mapG.append('path').attr('class','sp').attr('d',pg(d))
+        .attr('fill',getFill(abbr)).attr('stroke','#080c14').attr('stroke-width',0.8)
+        .attr('data-abbr',abbr).style('cursor','pointer'),
+      abbr
+    );
+  });
+  // Labels from actual centroids
+  feats.forEach(d=>{
+    const abbr=FIPS[String(d.id).padStart(2,'0')]; if(!abbr) return;
+    let cx,cy;
+    if(LABEL_OV[abbr]){[cx,cy]=LABEL_OV[abbr];}
+    else{
+      const c=pg.centroid(d);
+      if(!c||isNaN(c[0])) return;
+      [cx,cy]=c;
+    }
+    const b=pg.bounds(d);
+    const bw=b[1][0]-b[0][0], bh=b[1][1]-b[0][1];
+    if(!LABEL_OV[abbr]&&bw<18) return;
+    const fs=Math.max(6,Math.min(9,Math.min(bw,bh)*0.28));
+    mapG.append('text').attr('class','slabel')
+      .attr('x',cx).attr('y',cy).attr('text-anchor','middle').attr('dominant-baseline','middle')
+      .attr('font-size',fs+'px').attr('font-family','Inter,system-ui,sans-serif').attr('font-weight','700')
+      .attr('fill','rgba(255,255,255,0.92)').attr('pointer-events','none').attr('data-fs',fs).text(abbr);
+  });
+  hideSpinner();
+}
+
+function addLabelsFromTable(){
+  const POS={"01":[635,457,52],"02":[149,494,0],"04":[221,395,106],"05":[582,375,83],
+    "06":[128,327,101],"08":[334,307,105],"09":[808,238,0],"10":[782,271,0],
+    "12":[686,525,101],"13":[680,483,91],"15":[258,547,0],"16":[220,208,73],
+    "17":[580,310,67],"18":[628,302,41],"19":[526,251,76],"20":[437,320,108],
+    "21":[652,358,99],"22":[572,439,85],"23":[858,162,0],"24":[760,290,0],
+    "25":[830,222,0],"26":[632,214,60],"27":[520,182,87],"28":[581,426,67],
+    "29":[523,340,90],"30":[269,157,148],"31":[437,279,108],"32":[146,295,75],
+    "33":[826,193,0],"34":[789,264,0],"35":[279,386,93],"36":[757,215,87],
+    "37":[753,359,110],"38":[437,171,108],"39":[670,296,57],"40":[464,358,162],
+    "41":[140,207,102],"42":[737,258,76],"44":[824,234,0],"45":[724,390,72],
+    "46":[437,227,108],"47":[654,374,121],"48":[449,448,181],"49":[256,302,61],
+    "50":[807,196,0],"51":[754,306,109],"53":[148,146,97],"54":[724,293,50],
+    "55":[582,206,74],"56":[335,228,103]};
+  Object.entries(POS).forEach(([fips,[cx,cy,w]])=>{
+    const abbr=FIPS[fips.padStart(2,'0')]; if(!abbr) return;
+    if(w<20&&!LABEL_OV[abbr]) return;
+    const fs=w>60?8:7;
+    mapG.append('text').attr('class','slabel')
+      .attr('x',cx).attr('y',cy).attr('text-anchor','middle').attr('dominant-baseline','middle')
+      .attr('font-size',fs+'px').attr('font-family','Inter,system-ui,sans-serif').attr('font-weight','700')
+      .attr('fill','rgba(255,255,255,0.92)').attr('pointer-events','none').attr('data-fs',fs).text(abbr);
+  });
+}
+
+function hideSpinner(){
+  const el=document.getElementById('map-loading');
+  if(el) el.style.display='none';
+}
+
+// Boot: try real TopoJSON first, embedded as instant fallback
+tryLoadTopo().then(us=>{
+  if(us) renderFromTopo(us);
+  else renderFromEmbedded();
+}).catch(()=>renderFromEmbedded());
+
+</script>
+</body>
+</html>
